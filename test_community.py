@@ -95,7 +95,8 @@ class StoreTests(unittest.TestCase):
 
 class PrivacyTests(unittest.TestCase):
     def test_private_acl_has_only_explicit_participants(self):
-        everyone,staff,bot,owner=object(),object(),object(),object()
+        everyone,staff,owner=object(),object(),object()
+        bot=Mock(guild_permissions=discord.Permissions.all())
         guild=SimpleNamespace(default_role=everyone)
         perms=ticket_overwrites(guild,staff,bot,owner)
         self.assertEqual(set(perms),{everyone,staff,bot,owner})
@@ -109,6 +110,14 @@ class PrivacyTests(unittest.TestCase):
         closed=ticket_overwrites(guild,staff,bot,owner,closed=True)
         self.assertTrue(closed[owner].view_channel)
         self.assertFalse(closed[owner].send_messages)
+
+    def test_ticket_creation_does_not_set_permissions_bot_lacks(self):
+        everyone,staff,owner=object(),object(),object()
+        bot=Mock(guild_permissions=discord.Permissions(view_channel=True,send_messages=True,read_message_history=True,embed_links=True,manage_channels=True,manage_roles=True))
+        acl=ticket_overwrites(SimpleNamespace(default_role=everyone),staff,bot,owner)
+        for overwrite in acl.values():
+            allow,deny=overwrite.pair()
+            self.assertEqual((allow.value|deny.value)&~bot.guild_permissions.value,0)
 
     def test_long_giveaway_fits_embed_and_mentions_escaped(self):
         row=dict(id=1,prize='@everyone '+('*'*190),rules='@here '+('x'*890),ends=123,winners_count=10,state='ended',winners='[12,13]')

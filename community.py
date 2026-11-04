@@ -60,12 +60,14 @@ def ticket_overwrites(guild, staff, bot_member, owner=None, *, closed=False):
                                                 embed_links=True),
     }
     if owner is not None:
-        result[owner] = discord.PermissionOverwrite(
-            view_channel=True, send_messages=not closed, read_message_history=True,
-            attach_files=not closed, embed_links=not closed,
-            create_public_threads=False, create_private_threads=False, create_instant_invite=False,
-            send_messages_in_threads=False, mention_everyone=False,
-        )
+        # At channel creation Discord rejects even DENY bits the bot itself lacks.
+        # Ordinary members inherit disabled permissions when the bot lacks them too.
+        owner_access = discord.PermissionOverwrite(view_channel=True, send_messages=not closed, read_message_history=True)
+        for permission in ('create_public_threads','create_private_threads','create_instant_invite',
+                           'send_messages_in_threads','mention_everyone'):
+            if getattr(bot_member.guild_permissions,permission):
+                setattr(owner_access,permission,False)
+        result[owner] = owner_access
     return result
 
 
@@ -112,6 +114,8 @@ class TicketModal(discord.ui.Modal, title='Contact the support team'):
             channel = await self.features.open_ticket(interaction, str(self.subject), str(self.details))
             await interaction.followup.send(f'Your private ticket: {channel.mention}', ephemeral=True)
         except (ValueError, discord.HTTPException) as exc:
+            if isinstance(exc,discord.HTTPException):
+                LOG.warning('Ticket action failed: status=%s code=%s',exc.status,exc.code)
             msg = str(exc) if isinstance(exc,ValueError) else 'Ticket creation could not be confirmed. Please try again; existing tickets will be reused.'
             await interaction.followup.send(msg, ephemeral=True)
 
@@ -130,9 +134,11 @@ class TicketPanel(SafeView):
 
 
 class TicketControls(SafeView):
-    def __init__(self, features):
+    def __init__(self, features, *, closed=False):
         super().__init__(timeout=None)
         self.features = features
+        self.close_ticket.disabled = closed
+        self.reopen_ticket.disabled = not closed
 
     @discord.ui.button(label='Close ticket', emoji='🔒', style=discord.ButtonStyle.secondary, custom_id='gg:ticket:close:v1')
     async def close_ticket(self, interaction, button):
@@ -416,9 +422,19 @@ class CommunityFeatures:
                 except discord.NotFound:
                     await interaction.followup.send('The ticket owner has left the server. Staff can keep this ticket as a record.',ephemeral=True)
                     return
-            await interaction.channel.edit(name=f"{'🔒' if closed else '🎫'}・ticket-{row['id']:04}",
-                overwrites=ticket_overwrites(interaction.guild,staff,interaction.guild.me,owner,closed=closed),reason='Ticket closed' if closed else 'Ticket reopened')
+            # Keep the channel name stable; Discord heavily rate-limits name changes.
+            await interaction.channel.edit(overwrites=ticket_overwrites(interaction.guild,staff,interaction.guild.me,owner,closed=closed),reason='Ticket closed' if closed else 'Ticket reopened')
             self.store.ticket_state(row['id'],'closed' if closed else 'open')
+            marker=f"Global Gaming Lounge • ticket:{row['id']}"
+            async for message in interaction.channel.history(limit=None):
+                if message.author.id==self.bot.user.id and any(e.footer.text==marker for e in message.embeds):
+                    embed=message.embeds[0]
+                    for index in reversed(range(len(embed.fields))):
+                        if embed.fields[index].name=='Status':
+                            embed.remove_field(index)
+                    embed.add_field(name='Status',value='🔒 Closed — read-only for the ticket owner.' if closed else '🔓 Open — the support team can help here.',inline=False)
+                    await message.edit(embed=embed,view=TicketControls(self,closed=closed),allowed_mentions=NO_MENTIONS)
+                    break
             await interaction.followup.send('Ticket closed and made read-only. Messages were kept.' if closed else 'Ticket reopened.',ephemeral=True)
 
     async def recover_giveaway(self, row):
