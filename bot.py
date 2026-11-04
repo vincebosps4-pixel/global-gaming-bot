@@ -2,9 +2,13 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import logging
+import math
 import os
 import re
+import unicodedata
+from datetime import timezone
 from pathlib import Path
 
 import discord
@@ -38,6 +42,121 @@ GUILD = discord.Object(id=GUILD_ID)
 NO_MENTIONS = discord.AllowedMentions.none()
 
 
+def welcome_card(display_name: str, avatar: bytes | None = None) -> bytes:
+    """Render a local, deterministic card. Avatar bytes never leave the host except for Discord."""
+    from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
+
+    width, height = 1200, 450
+    card = Image.new("RGB", (width, height), "#090E1B")
+    draw = ImageDraw.Draw(card)
+    for y in range(height):
+        draw.line((0, y, width, y), fill=(9 + y // 90, 14 + y // 100, 27 + y // 45))
+    glow = Image.new("RGBA", card.size)
+    gd = ImageDraw.Draw(glow)
+    gd.ellipse((-100, 60, 410, 560), fill=(0, 191, 255, 65))
+    gd.ellipse((950, -160, 1430, 290), fill=(255, 45, 149, 65))
+    card = Image.alpha_composite(card.convert("RGBA"), glow.filter(ImageFilter.GaussianBlur(75)))
+    draw = ImageDraw.Draw(card)
+    for x in range(740, 1400, 42):
+        draw.line((x, 20, x - 200, 430), fill=(23, 33, 50, 255), width=1)
+    draw.rounded_rectangle((14, 14, 1185, 435), radius=28, outline=(68, 89, 128, 170), width=2)
+    draw.line((42, 15, 600, 15), fill="#00BFFF", width=3)
+    draw.line((600, 435, 1158, 435), fill="#FF2D95", width=3)
+
+    def font(size, text=""):
+        # System fonts cover more international names; Pillow's bundled font is the portable fallback.
+        candidates = []
+        if any(0x3040 <= ord(c) <= 0x9FFF or 0xAC00 <= ord(c) <= 0xD7AF for c in text):
+            candidates.extend(("msyhbd.ttc", "YuGothB.ttc", "msgothic.ttc", "NotoSansCJK-Bold.ttc"))
+        if any(ord(c) >= 0x1F000 for c in text):
+            candidates.append("seguiemj.ttf")
+        for candidate in (*candidates, "segoeuib.ttf", "DejaVuSans-Bold.ttf", "Arial.ttf"):
+            try:
+                return ImageFont.truetype(candidate, size)
+            except OSError:
+                continue
+        return ImageFont.load_default(size=size)
+
+    white, muted = "#F7FBFF", "#A9B9D2"
+    draw.text((47, 39), "GG", font=font(30), fill="#00BFFF")
+    draw.text((107, 45), "GLOBAL GAMING", font=font(20), fill=white)
+    draw.rounded_rectangle((1000, 37, 1150, 72), radius=17, fill=(47, 18, 45, 255), outline="#FF2D95")
+    draw.text((1021, 45), "NEW PLAYER", font=font(15), fill="#FFB8DD")
+
+    # A blue-to-pink orbit around the member's real Discord profile picture.
+    cx, cy, radius = 204, 242, 124
+    orbit = Image.new("RGBA", card.size)
+    od = ImageDraw.Draw(orbit)
+    for angle in range(360):
+        mix = (1 + math.cos(math.radians(angle - 30))) / 2
+        colour = (round(255 * mix), round(191 * (1-mix) + 45 * mix), round(255 * (1-mix) + 149 * mix), 255)
+        od.arc((cx-radius, cy-radius, cx+radius, cy+radius), angle, angle+2, fill=colour, width=5)
+    card = Image.alpha_composite(card, orbit.filter(ImageFilter.GaussianBlur(12)))
+    card = Image.alpha_composite(card, orbit)
+    face = Image.new("RGB", (222, 222), "#142139")
+    if avatar:
+        try:
+            with Image.open(io.BytesIO(avatar), formats=("PNG", "JPEG", "WEBP")) as original:
+                if original.width * original.height > 4_194_304:
+                    raise ValueError("Avatar dimensions are too large")
+                face = ImageOps.fit(original.convert("RGB"), (222, 222), method=Image.Resampling.LANCZOS)
+        except (OSError, ValueError, Image.DecompressionBombError):
+            avatar = None
+    if not avatar:
+        fd = ImageDraw.Draw(face)
+        fd.ellipse((79, 43, 143, 107), fill="#F7FBFF")
+        fd.rounded_rectangle((48, 117, 174, 206), radius=45, fill="#00BFFF")
+    mask = Image.new("L", face.size)
+    ImageDraw.Draw(mask).ellipse((0, 0, 221, 221), fill=255)
+    card.paste(face, (93, 131), mask)
+    draw = ImageDraw.Draw(card)
+    draw.text((384, 123), "WELCOME TO THE SQUAD", font=font(24), fill="#00BFFF")
+    # Remove controls/bidi overrides; keep the readable international display name.
+    full_name = " ".join("".join(c for c in str(display_name) if not unicodedata.category(c).startswith("C")).split())[:100] or "Player"
+    name = full_name
+    size = 64
+    while size > 28 and draw.textlength(name, font=font(size, name)) > 744:
+        size -= 2
+    name_font = font(size, name)
+    if draw.textlength(name, font=name_font) > 744:
+        while name and draw.textlength(name + "…", font=name_font) > 744:
+            name = name[:-1]
+        name += "…"
+    draw.text((381, 171), name, font=name_font, fill=white)
+    draw.text((385, 262), "Your next squad starts here.", font=font(26), fill=muted)
+    draw.text((385, 307), "CHOOSE YOUR GAMES   /   MEET YOUR PEOPLE", font=font(16), fill="#FF8CC4")
+    draw.line((385, 355, 1126, 355), fill=(68, 89, 128, 170), width=1)
+    draw.ellipse((386, 377, 393, 384), fill="#00BFFF")
+    draw.text((407, 372), "PLAY TOGETHER. FEEL AT HOME.", font=font(16), fill=muted)
+    output = io.BytesIO()
+    card.convert("RGB").save(output, format="PNG", optimize=True)
+    return output.getvalue()
+
+
+async def welcome_payload(member):
+    """One short accessible embed, image attachment and native Discord link buttons."""
+    avatar = None
+    try:
+        avatar = await asyncio.wait_for(member.display_avatar.with_size(256).with_format("png").read(), timeout=10)
+    except (discord.HTTPException, asyncio.TimeoutError, OSError):
+        pass
+    card = await asyncio.to_thread(welcome_card, member.display_name, avatar)
+    name = discord.utils.escape_markdown(discord.utils.escape_mentions(member.display_name))
+    embed = discord.Embed(title=f"👋 Welcome, {name}!"[:256], colour=0x00BFFF,
+        description=f"Hey {member.mention}, welcome to **Global Gaming**! 💙\n"
+        "Pick your games in **Channels & Roles** to reveal their chats and voice rooms. "
+        "You can choose several, change them later or skip.\n\n"
+        f"Read <#{CHANNELS['rules']}> and say hello in <#{CHANNELS['general']}>. "
+        "**Find your squad. Make yourself at home.**")
+    embed.set_image(url="attachment://welcome.png")
+    embed.set_footer(text="Global Gaming • Play together. Feel at home.")
+    view = discord.ui.View(timeout=None)
+    view.add_item(discord.ui.Button(label="Choose your games", emoji="🎮", url=f"https://discord.com/channels/{GUILD_ID}/customize-community"))
+    view.add_item(discord.ui.Button(label="Server rules", emoji="📜", url=f"https://discord.com/channels/{GUILD_ID}/{CHANNELS['rules']}"))
+    return {"embed": embed, "file": discord.File(io.BytesIO(card), filename="welcome.png"), "view": view,
+            "allowed_mentions": NO_MENTIONS}
+
+
 def template_embeds() -> dict[str, discord.Embed]:
     welcome = discord.Embed(
         title="🌍 Welcome to Global Gaming Lounge!",
@@ -64,7 +183,8 @@ def template_embeds() -> dict[str, discord.Embed]:
     ), inline=False)
     welcome.add_field(name="🎨 Make it yours", value=(
         "Use **Channels & Roles** to choose your games, country and devices. "
-        "Every choice is optional, and you can change your answers later."
+        "Choosing a game reveals its chats and voice rooms; unchecking it hides them. "
+        "Every choice is optional. General channels stay visible, and you can change your answers later."
     ), inline=False)
 
     rules = discord.Embed(title="📜 Community Rules", colour=0xFF2D95,
@@ -259,12 +379,15 @@ class LoungeBot(discord.Client):
         intents = discord.Intents.none()
         intents.guilds = True
         intents.guild_messages = True  # System boost events; no message-content intent.
-        super().__init__(intents=intents, allowed_mentions=NO_MENTIONS)
+        intents.members = True  # Enable Server Members Intent in the Developer Portal.
+        super().__init__(intents=intents, allowed_mentions=NO_MENTIONS,
+                         member_cache_flags=discord.MemberCacheFlags.none(), chunk_guilds_at_startup=False)
         self.tree = app_commands.CommandTree(self)
         self.publish_lock = asyncio.Lock()
         self.initial_setup_attempted = False
         self.community = None
         self.instance_lock = None
+        self.welcome_slots = asyncio.Semaphore(2)
 
     async def setup_hook(self):
         if self.user.id != 1567606693674885302:
@@ -332,6 +455,37 @@ class LoungeBot(discord.Client):
     async def on_message(self, message):
         if self.community is not None:
             await self.community.boost_message(message)
+
+    async def on_member_join(self, member):
+        if member.guild.id != GUILD_ID or member.bot or self.community is None:
+            return
+        if os.getenv("PUBLISH_ONCE", "false").lower() == "true":
+            return
+        async with self.welcome_slots:
+            payload = None
+            try:
+                channel = await self.destination("welcome")
+                if not channel.permissions_for(channel.guild.me).attach_files:
+                    raise ValueError("Attach Files is required in #welcome for welcome cards.")
+                joined = member.joined_at.astimezone(timezone.utc).isoformat() if member.joined_at else "unknown"
+                store = self.community.store
+                if store.has_welcome(member.id, joined):
+                    return
+                payload = await welcome_payload(member)
+                if not store.claim_welcome(member.id, joined):
+                    return
+                try:
+                    sent = await channel.send(**payload)
+                except (discord.Forbidden, discord.NotFound):
+                    store.retry_welcome(member.id, joined)
+                    raise
+                # On an ambiguous transport error keep the claim: never blindly send twice.
+                store.complete_welcome(member.id, joined, sent.id)
+            except Exception as exc:
+                LOG.warning("Welcome not confirmed (%s). Check channel permissions and the welcome channel.", type(exc).__name__)
+            finally:
+                if payload is not None:
+                    payload["file"].close()
 
     async def close(self):
         if self.community is not None:
@@ -421,6 +575,19 @@ async def announce(interaction: discord.Interaction):
     await interaction.response.send_modal(AnnouncementForm())
 
 
+@bot.tree.command(name="welcome_preview", description="Privately preview your personal Global Gaming welcome card.", guild=GUILD)
+@app_commands.guild_only()
+@app_commands.default_permissions(manage_guild=True)
+@app_commands.check(is_manager)
+async def welcome_preview(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    payload = await welcome_payload(interaction.user)
+    try:
+        await interaction.followup.send(content="Private example — nothing was posted in #welcome.", **payload, ephemeral=True)
+    finally:
+        payload["file"].close()
+
+
 @bot.tree.command(name="bot_status", description="Check community features and channel permissions.", guild=GUILD)
 @app_commands.guild_only()
 @app_commands.default_permissions(manage_guild=True)
@@ -428,6 +595,10 @@ async def announce(interaction: discord.Interaction):
 async def bot_status(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     lines = ["Global Gaming Lounge community bot is online."]
+    lines.append("Personal welcome cards: enabled (new human members while online)")
+    welcome_channel = interaction.guild.get_channel(CHANNELS["welcome"])
+    if welcome_channel:
+        lines.append("Welcome image uploads: " + ("ready" if welcome_channel.permissions_for(interaction.guild.me).attach_files else "Attach Files missing"))
     if bot.community:
         lines.append("Giveaway timer: " + ("running" if bot.community.worker.is_running() else "not running"))
         try:

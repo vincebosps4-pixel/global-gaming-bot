@@ -290,7 +290,7 @@ class CommunityFeatures:
         async def help_command(interaction):
             embed = discord.Embed(title='🌍 Global Gaming help',colour=BLUE,description=f'**Tickets:** <#{PANEL_ID}>\n**Giveaways:** <#{GIVEAWAY_ID}>\n**Boosts:** <#{BOOST_ID}>\n**Roles:** Open Channels & Roles; every question is optional.')
             if self.is_manager(interaction):
-                embed.add_field(name='Staff commands',value='`/announce` · `/giveaway` · `/giveaway_cancel` · `/setup_embeds` · `/setup_community` · `/bot_status`',inline=False)
+                embed.add_field(name='Staff commands',value='`/announce` · `/welcome_preview` · `/giveaway` · `/giveaway_cancel` · `/setup_embeds` · `/setup_community` · `/bot_status`',inline=False)
             await interaction.response.send_message(embed=embed,ephemeral=True)
 
     async def setup(self):

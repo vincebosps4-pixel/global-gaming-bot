@@ -1,9 +1,117 @@
 import unittest
+import asyncio
+import io
+import tempfile
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import discord
-from bot import CHANNELS, GUILD_ID, LoungeBot, PublishPreview, announcement_embed, is_manager, template_embeds, upsert_embed
+from bot import CHANNELS, GUILD_ID, LoungeBot, PublishPreview, announcement_embed, is_manager, template_embeds, upsert_embed, welcome_card, welcome_payload
+from storage import Store
+from PIL import Image
+
+
+class WelcomeTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.store_path = Path(self.temp.name) / "data.sqlite3"
+        self.store = Store(self.store_path)
+        avatar = SimpleNamespace(read=AsyncMock(side_effect=OSError("avatar unavailable")))
+        avatar.with_size = lambda size: avatar
+        avatar.with_format = lambda fmt: avatar
+        self.member = SimpleNamespace(id=42, bot=False, guild=SimpleNamespace(id=GUILD_ID),
+            joined_at=datetime(2026, 11, 4, tzinfo=timezone.utc), display_name="Player One", mention="<@42>", display_avatar=avatar)
+        self.channel = SimpleNamespace(send=AsyncMock(return_value=SimpleNamespace(id=99)),
+            guild=SimpleNamespace(me=object()), permissions_for=lambda member: SimpleNamespace(attach_files=True))
+        self.client = SimpleNamespace(community=SimpleNamespace(store=self.store),
+            welcome_slots=asyncio.Semaphore(2), destination=AsyncMock(return_value=self.channel))
+
+    def tearDown(self):
+        self.store.close()
+        self.temp.cleanup()
+
+    async def test_join_once_across_duplicate_events_and_restart_then_rejoin(self):
+        await asyncio.gather(LoungeBot.on_member_join(self.client,self.member), LoungeBot.on_member_join(self.client,self.member))
+        self.channel.send.assert_awaited_once()
+        self.store.close()
+        self.store = Store(self.store_path)
+        self.client.community.store = self.store
+        await LoungeBot.on_member_join(self.client,self.member)
+        self.channel.send.assert_awaited_once()
+        self.member.joined_at += timedelta(days=1)
+        await LoungeBot.on_member_join(self.client,self.member)
+        self.assertEqual(self.channel.send.await_count,2)
+
+    async def test_bots_other_servers_and_one_shot_publish_do_not_get_welcomes(self):
+        self.member.bot = True
+        await LoungeBot.on_member_join(self.client,self.member)
+        self.member.bot = False
+        self.member.guild.id = 1
+        await LoungeBot.on_member_join(self.client,self.member)
+        self.member.guild.id = GUILD_ID
+        with patch.dict("os.environ", {"PUBLISH_ONCE":"true"}):
+            await LoungeBot.on_member_join(self.client,self.member)
+        self.client.destination.assert_not_awaited()
+        self.channel.send.assert_not_awaited()
+
+    async def test_upload_permission_failure_does_not_consume_join(self):
+        self.channel.permissions_for = lambda member: SimpleNamespace(attach_files=False)
+        await LoungeBot.on_member_join(self.client,self.member)
+        self.channel.send.assert_not_awaited()
+        self.assertFalse(self.store.has_welcome(42,self.member.joined_at.isoformat()))
+
+    async def test_ambiguous_send_error_does_not_send_twice(self):
+        self.channel.send.side_effect = OSError("transport disconnected after send")
+        await LoungeBot.on_member_join(self.client,self.member)
+        await LoungeBot.on_member_join(self.client,self.member)
+        self.channel.send.assert_awaited_once()
+
+    async def test_forbidden_can_retry_after_permissions_fixed(self):
+        self.channel.send.side_effect = discord.Forbidden(SimpleNamespace(status=403,reason="Forbidden"),"Missing permissions")
+        await LoungeBot.on_member_join(self.client,self.member)
+        self.channel.send.side_effect = None
+        await LoungeBot.on_member_join(self.client,self.member)
+        self.assertEqual(self.channel.send.await_count,2)
+
+    async def test_private_preview_preserves_name_disables_mentions_and_links_correct_guild(self):
+        self.member.display_name = "**@everyone** 測試"
+        payload = await welcome_payload(self.member)
+        try:
+            self.assertLess(len(payload['embed']),6000)
+            self.assertIn("測試",payload['embed'].title)
+            self.assertFalse(payload['allowed_mentions'].everyone)
+            self.assertFalse(payload['allowed_mentions'].users)
+            self.assertFalse(payload['allowed_mentions'].roles)
+            self.assertTrue(all(str(GUILD_ID) in b.url for b in payload['view'].children))
+            self.assertEqual(payload['embed'].image.url,"attachment://welcome.png")
+            self.assertEqual(payload['file'].filename,"welcome.png")
+            self.channel.send.assert_not_awaited()
+        finally:
+            payload['file'].close()
+            payload['view'].stop()
+
+    async def test_card_is_valid_and_uses_avatar_with_long_international_names(self):
+        avatar = io.BytesIO()
+        Image.new('RGB',(50,50),'red').save(avatar,format='PNG')
+        for name in ('Player One','VeryLongPlayerName'*8,'日本語 العربية 🎮','\n\u202e'):
+            raw = welcome_card(name,avatar.getvalue())
+            self.assertLess(len(raw),1_000_000)
+            with Image.open(io.BytesIO(raw)) as card:
+                self.assertEqual(card.size,(1200,450))
+                self.assertEqual(card.getpixel((204,242)),(255,0,0))
+        with Image.open(io.BytesIO(welcome_card('Player',b'broken avatar'))) as fallback:
+            self.assertEqual(fallback.size,(1200,450))
+
+    async def test_only_members_intent_added_without_message_content_or_presence(self):
+        client = LoungeBot()
+        try:
+            self.assertTrue(client.intents.members)
+            self.assertFalse(client.intents.message_content)
+            self.assertFalse(client.intents.presences)
+        finally:
+            await client.close()
 
 
 class TemplatesTest(unittest.TestCase):

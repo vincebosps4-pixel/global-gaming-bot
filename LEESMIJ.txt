@@ -17,7 +17,13 @@ De pc moet aan, aangemeld en online blijven. Het scherm mag vergrendeld zijn.
 De bot start na Windows-aanmelding als het aanmaken van de geplande taak lukt.
 Er worden geen betaalde diensten afgesloten.
 
-Embeds, privé-tickets, giveaways, boostbedankjes, kanaalopmaak en botupdates
+Nieuw in 1.0.3: persoonlijke welkomstkaartjes in welcome met naam en profielfoto,
+neonblauw en roze, plus knoppen voor regels en gamekeuzes.
+Server Members Intent moet aan in het Developer Portal (voor deze bot ingesteld).
+Message Content en Presence blijven uit. De bot moet online zijn bij het joinen.
+Met /welcome_preview bekijk je privé je eigen kaartje.
+
+Embeds, welkomstkaartjes, privé-tickets, giveaways, boostbedankjes, kanaalopmaak en botupdates
 zitten in dit pakket. De optionele rolvragen blijven door Discord geregeld.
 Giveaways beginnen pas nadat een beheerder een echte prijs heeft opgegeven.
 

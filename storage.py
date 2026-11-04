@@ -33,6 +33,9 @@ class Store:
                 giveaway INTEGER NOT NULL REFERENCES giveaways(id), user INTEGER NOT NULL,
                 PRIMARY KEY(giveaway,user));
             CREATE TABLE IF NOT EXISTS boost_events(id INTEGER PRIMARY KEY, handled INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS welcomes(
+                member INTEGER PRIMARY KEY, joined TEXT NOT NULL,
+                message INTEGER, created INTEGER NOT NULL);
         """)
 
     def close(self):
@@ -127,3 +130,22 @@ class Store:
     def backup(self, path: Path):
         with closing(sqlite3.connect(path)) as dest:
             self.db.backup(dest)
+
+    def has_welcome(self, member: int, joined: str) -> bool:
+        return self.db.execute("SELECT 1 FROM welcomes WHERE member=? AND joined=?", (member,joined)).fetchone() is not None
+
+    def claim_welcome(self, member: int, joined: str) -> bool:
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            if self.has_welcome(member,joined):
+                return False
+            self.db.execute("INSERT INTO welcomes VALUES(?,?,NULL,?) ON CONFLICT(member) DO UPDATE SET joined=excluded.joined,message=NULL,created=excluded.created", (member,joined,int(time.time())))
+            return True
+
+    def retry_welcome(self, member: int, joined: str):
+        with self.db:
+            self.db.execute("DELETE FROM welcomes WHERE member=? AND joined=? AND message IS NULL", (member,joined))
+
+    def complete_welcome(self, member: int, joined: str, message: int):
+        with self.db:
+            self.db.execute("UPDATE welcomes SET message=? WHERE member=? AND joined=?", (message,member,joined))

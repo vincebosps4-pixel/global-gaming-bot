@@ -14,12 +14,13 @@ Communitybot voor Global Gaming: Fortnite, Minecraft, Rocket League, Roblox, Cal
 
 ## Functies
 
+- Persoonlijk welkomstbericht in `👋・welcome` voor nieuwe leden, met een lokaal gemaakt neonblauw/roze kaartje, hun Discord-profielfoto en naam, en knoppen voor regels en gamekeuzes. Geen externe afbeeldingsdienst nodig. Werkt terwijl de bot online is; geen inhaalberichten voor joins tijdens offline tijd en geen welkomstspam bij opstarten. Bots krijgen geen kaartje.
 - 17 vaste informatie-embeds, zonder dubbele starterberichten. Alleen eigen herkenbare berichten worden bijgewerkt.
 - Eenmalige kanaalopmaak: `👋・welcome`, `💬・chat`, `🔎・looking-for-group` enzovoort. ID's en inhoud blijven behouden.
 - Ticketpaneel met formulier en één open ticket per lid. Alleen de aanvrager, Support Team, serverbeheerders en bot kunnen het zien. Sluiten maakt het voor de aanvrager alleen-lezen; Support Team kan heropenen. Geen automatische verwijdering of externe transcripten.
 - Giveaways met privévoorbeeld, publicatiebevestiging, deelnameknop, één deelname per account, eindtijd en willekeurige winnaars. Na een herstart blijven deelnemers en eenmaal getrokken winnaars behouden. Als de bot bij de eindtijd offline is, verwerkt hij de uitslag zodra hij online komt; late deelname is gesloten.
 - Roze boostbedankjes wanneer Discord een boost-systeembericht verstuurt terwijl de bot online is. Zet deze systeemberichten aan in de serverinstellingen. Discord beheert zelf de Server Booster-rol.
-- De bestaande optionele game-, land- en apparaatrollen blijven via Discord Onboarding werken, ook zonder online bot: zeven gamekeuzes, 31 landkeuzes en zes apparaatkeuzes.
+- De bestaande optionele game-, land- en apparaatrollen blijven via Discord Onboarding werken, ook zonder online bot: zeven gamekeuzes, 31 landkeuzes en zes apparaatkeuzes. De zes game-rollen tonen hun eigen categorie; uitvinken verbergt die weer. Algemene kanalen blijven zichtbaar. Other Games, land en apparaat zijn profielrollen.
 
 Giveaways beginnen pas nadat een beheerder een echte prijs, looptijd en regels heeft bevestigd. Er is geen wedstrijd met een verzonnen prijs gestart. GTA VI is een nieuws- en discussiecategorie; de bot haalt geen automatisch nieuws op.
 
@@ -29,6 +30,7 @@ Giveaways beginnen pas nadat een beheerder een echte prijs, looptijd en regels h
 |---|---|
 | `/community_help` | Privéoverzicht van tickets, giveaways en rolkeuzes |
 | `/announce` | Aankondiging met privévoorbeeld en publicatieknop |
+| `/welcome_preview` | Je eigen welkomstkaartje bekijken, alleen voor jou zichtbaar |
 | `/giveaway` | Gratis giveaway voorbereiden: prijs, minuten, winnaars, regels |
 | `/giveaway_cancel` | Annuleren met bevestiging; bericht blijft behouden |
 | `/setup_embeds` | Vaste embeds vernieuwen |
@@ -39,11 +41,13 @@ Beheeropdrachten eisen **Server beheren**, ook bij oude previewknoppen. Wijs Sup
 
 ## Rechten en gegevens
 
-De bot is vastgezet op de bestaande Global Gaming-app en server. Nodig: kanalen bekijken, berichten versturen, links insluiten, berichtgeschiedenis lezen, kanalen beheren en rollen beheren. De laatste twee dienen voor privé-ticketkanalen en hun toegangsrechten. Houd de botrol boven Support Team; **Administrator is niet nodig**. Bewaar de expliciete publicatierechten in de alleen-lezen START HERE-kanalen.
+De bot is vastgezet op de bestaande Global Gaming-app en server. Nodig: kanalen bekijken, berichten versturen, links insluiten, berichtgeschiedenis lezen, kanalen beheren en rollen beheren; bovendien **Bestanden bijvoegen in welcome** voor de kaartjes. De beheerrechten dienen voor privé-ticketkanalen en hun toegangsrechten. Houd de botrol boven Support Team; **Administrator is niet nodig**. Bewaar de expliciete publicatierechten in de alleen-lezen START HERE-kanalen.
 
-**Geen privileged intents nodig:** Message Content, Server Members en Presence blijven uit. De bot ontvangt systeemberichten voor boosts, geen algemene berichtinhoud. Geen Ticket Tool, GiveawayBot of andere extra bot nodig.
+**Server Members Intent moet aan** op de [botpagina in het Discord Developer Portal](https://discord.com/developers/applications/1567606693674885302/bot), zodat Discord nieuwe leden aan de bot doorgeeft. Dit is ingesteld voor Global Gaming. Message Content en Presence blijven uit. De bot vraagt geen volledige ledenlijst op en bewaart geen lidcache. Hij ontvangt systeemberichten voor boosts, geen algemene berichtinhoud. Geen Welcomer, Ticket Tool, GiveawayBot of andere extra bot nodig.
 
-Ticketinhoud blijft in Discord. Ticketmetadata, giveawayteksten, deelnemers-ID's en resultaten staan in `data/community.sqlite3` op de host. De repository en release bevatten geen sleutel of gebruikersgegevens. Bewaar `config/` en `data/` privé. Bij verhuizing: stop de oude bot en neem beide mappen mee om actieve tickets en giveaways te behouden.
+Dubbele joinmeldingen worden per lid en joinmoment onderdrukt, ook na een herstart met dezelfde database. Bij een onduidelijke netwerkfout wordt niet blind opnieuw verstuurd: controleer dan welcome. Een mislukte verbinding kan dus een welkomstbericht missen. De normale afbeelding en naam worden in geheugen verwerkt; een niet-beschikbare profielfoto krijgt een neutrale avatar. Lange namen worden passend gemaakt. De volledige naam staat ook als Discord-tekst in de embed; beschikbare systeemlettertypen bepalen de schriftweergave op het kaartje.
+
+Ticketinhoud blijft in Discord. Ticketmetadata, giveawayteksten, deelnemers-ID's, resultaten en de laatste welkomstregistratie per lid (ID, joinmoment en bericht-ID) staan in `data/community.sqlite3` op de host. Namen en profielfoto's worden niet in deze database opgeslagen. De repository en release bevatten geen sleutel of gebruikersgegevens. Bewaar `config/` en `data/` privé. Bij verhuizing: stop de oude bot en neem beide mappen mee om actieve tickets en giveaways te behouden.
 
 ## Automatische updates
 
