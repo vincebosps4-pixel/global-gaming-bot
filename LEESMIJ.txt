@@ -17,7 +17,10 @@ De pc moet aan, aangemeld en online blijven. Het scherm mag vergrendeld zijn.
 De bot start na Windows-aanmelding als het aanmaken van de geplande taak lukt.
 Er worden geen betaalde diensten afgesloten.
 
-Nieuw in 1.0.4: /profile opent je blauw-roze gamerkaart privé. Kies welke
+In 1.0.5 krijgen de gamerkaart en de persoonlijke welkomstkaart een zwarte
+achtergrond met neonblauwe en roze accenten.
+
+Sinds 1.0.4 opent /profile je blauw-roze gamerkaart privé. Kies welke
 velden je toont, zet optioneel chat-XP aan en deel je kaart als je wilt.
 Levels en badges werken zolang de bot online is. Geen nieuwe intents nodig.
 

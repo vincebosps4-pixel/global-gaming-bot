@@ -41,6 +41,7 @@ CHANNELS = {
 }
 GUILD = discord.Object(id=GUILD_ID)
 NO_MENTIONS = discord.AllowedMentions.none()
+CARD_BACKGROUND = "#000000"
 
 # Only known public community rooms and role-selected game rooms; never ticket or staff channels.
 SOCIAL_CHANNELS = frozenset({
@@ -93,21 +94,19 @@ def gamer_card(sheet, avatar=None):
 
     cyan, pink, white, muted = "#39D9FF", "#FF489F", "#F4F7FF", "#A9BAD3"
     height = 288 + 64 * len(sheet["details"])
-    card = Image.new("RGB", (1000, height), "#0B1021")
+    card = Image.new("RGB", (1000, height), CARD_BACKGROUND)
     d = ImageDraw.Draw(card)
-    for y in range(height):
-        d.line((0, y, 1000, y), fill=(11 + y * 5 // height, 16, 33 + y * 12 // height))
     for x in range(640, 1240, 28):
-        d.line((x, 1, x - 138, 236), fill="#232741")
+        d.line((x, 1, x - 138, 236), fill="#202020")
     d.polygon([(0,0),(282,0),(265,7),(0,7)], fill=cyan)
     d.polygon([(830,0),(1000,0),(1000,7),(814,7)], fill=pink)
     d.text((37,24), "GG  /  GLOBAL GAMING", font=font(21,True), fill=white)
     d.text((959,30), "COMMUNITY   /   PLAYER PASS", anchor="ra", font=font(15,True), fill=cyan)
-    d.line((38,65,959,65), fill="#34405C")
+    d.line((38,65,959,65), fill="#383838")
     left = 42
     if sheet["avatar"]:
         box = (43,91,171,219)
-        d.ellipse((38,86,176,224), fill="#0A1020", outline=cyan, width=3)
+        d.ellipse((38,86,176,224), fill=CARD_BACKGROUND, outline=cyan, width=3)
         d.arc((38,86,176,224), -70, 95, fill=pink, width=4)
         face = None
         if avatar:
@@ -118,7 +117,7 @@ def gamer_card(sheet, avatar=None):
             except (OSError, ValueError, Image.DecompressionBombError):
                 pass
         if face is None:
-            face = Image.new("RGB",(128,128),"#192A45")
+            face = Image.new("RGB",(128,128),"#171717")
             ImageDraw.Draw(face).text((64,63),"GG",font=font(37,True),fill=cyan,anchor="mm")
         mask = Image.new("L",(128,128))
         ImageDraw.Draw(mask).ellipse((0,0,127,127),fill=255)
@@ -139,14 +138,14 @@ def gamer_card(sheet, avatar=None):
         level, progress = 1+xp//100, xp%100
         d.text((left,177),f"LEVEL {level:02d}",font=font(19,True),fill=cyan)
         d.text((957,177),f"{progress} / 100 XP TO NEXT LEVEL",font=font(16),fill=muted,anchor="ra")
-        d.rounded_rectangle((left,209,958,217),4,fill="#2A344B")
+        d.rounded_rectangle((left,209,958,217),4,fill="#333333")
         if progress:
             d.rounded_rectangle((left,209,left+max(8,(958-left)*progress//100),217),4,fill=cyan)
     else:
         d.text((left,184),"THE GLOBAL GAMING COMMUNITY",font=font(16),fill=muted)
     for i,(label,values) in enumerate(sheet["details"].items()):
         y = 241 + i*64
-        d.rounded_rectangle((37,y,961,y+52),10,fill="#182136",outline="#2A3850")
+        d.rounded_rectangle((37,y,961,y+52),10,fill=CARD_BACKGROUND,outline="#333333")
         accent = (cyan,pink,cyan)[i]
         d.rectangle((38,y+12,41,y+40),fill=accent)
         d.text((58,y+15),label.upper(),font=font(16,True),fill=accent)
@@ -156,7 +155,7 @@ def gamer_card(sheet, avatar=None):
             size -= 1
         d.text((173,y+12),body,font=font(size,True),fill=white if values else muted)
     d.text((39,height-26),"GG   //   PLAYER SERIES",font=font(12,True),fill=muted)
-    d.line((212,height-17,865,height-17),fill="#31405B")
+    d.line((212,height-17,865,height-17),fill="#333333")
     for j in range(6):
         x=886+j*12
         d.polygon([(x,height-13),(x+5,height-21),(x+11,height-21),(x+6,height-13)],fill=cyan if j<3 else pink)
@@ -170,19 +169,11 @@ def welcome_card(display_name: str, avatar: bytes | None = None) -> bytes:
     from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
     width, height = 1200, 450
-    card = Image.new("RGB", (width, height), "#090E1B")
-    draw = ImageDraw.Draw(card)
-    for y in range(height):
-        draw.line((0, y, width, y), fill=(9 + y // 90, 14 + y // 100, 27 + y // 45))
-    glow = Image.new("RGBA", card.size)
-    gd = ImageDraw.Draw(glow)
-    gd.ellipse((-100, 60, 410, 560), fill=(0, 191, 255, 65))
-    gd.ellipse((950, -160, 1430, 290), fill=(255, 45, 149, 65))
-    card = Image.alpha_composite(card.convert("RGBA"), glow.filter(ImageFilter.GaussianBlur(75)))
+    card = Image.new("RGBA", (width, height), CARD_BACKGROUND)
     draw = ImageDraw.Draw(card)
     for x in range(740, 1400, 42):
-        draw.line((x, 20, x - 200, 430), fill=(23, 33, 50, 255), width=1)
-    draw.rounded_rectangle((14, 14, 1185, 435), radius=28, outline=(68, 89, 128, 170), width=2)
+        draw.line((x, 20, x - 200, 430), fill="#202020", width=1)
+    draw.rounded_rectangle((14, 14, 1185, 435), radius=28, outline="#383838", width=2)
     draw.line((42, 15, 600, 15), fill="#00BFFF", width=3)
     draw.line((600, 435, 1158, 435), fill="#FF2D95", width=3)
 
@@ -216,7 +207,7 @@ def welcome_card(display_name: str, avatar: bytes | None = None) -> bytes:
         od.arc((cx-radius, cy-radius, cx+radius, cy+radius), angle, angle+2, fill=colour, width=5)
     card = Image.alpha_composite(card, orbit.filter(ImageFilter.GaussianBlur(12)))
     card = Image.alpha_composite(card, orbit)
-    face = Image.new("RGB", (222, 222), "#142139")
+    face = Image.new("RGB", (222, 222), "#171717")
     if avatar:
         try:
             with Image.open(io.BytesIO(avatar), formats=("PNG", "JPEG", "WEBP")) as original:
@@ -248,7 +239,7 @@ def welcome_card(display_name: str, avatar: bytes | None = None) -> bytes:
     draw.text((381, 171), name, font=name_font, fill=white)
     draw.text((385, 262), "Your next squad starts here.", font=font(26), fill=muted)
     draw.text((385, 307), "CHOOSE YOUR GAMES   /   MEET YOUR PEOPLE", font=font(16), fill="#FF8CC4")
-    draw.line((385, 355, 1126, 355), fill=(68, 89, 128, 170), width=1)
+    draw.line((385, 355, 1126, 355), fill="#383838", width=1)
     draw.ellipse((386, 377, 393, 384), fill="#00BFFF")
     draw.text((407, 372), "PLAY TOGETHER. FEEL AT HOME.", font=font(16), fill=muted)
     output = io.BytesIO()
