@@ -17,7 +17,11 @@ De pc moet aan, aangemeld en online blijven. Het scherm mag vergrendeld zijn.
 De bot start na Windows-aanmelding als het aanmaken van de geplande taak lukt.
 Er worden geen betaalde diensten afgesloten.
 
-Nieuw in 1.0.3: persoonlijke welkomstkaartjes in welcome met naam en profielfoto,
+Nieuw in 1.0.4: /profile opent je blauw-roze gamerkaart privé. Kies welke
+velden je toont, zet optioneel chat-XP aan en deel je kaart als je wilt.
+Levels en badges werken zolang de bot online is. Geen nieuwe intents nodig.
+
+Sinds 1.0.3: persoonlijke welkomstkaartjes in welcome met naam en profielfoto,
 neonblauw en roze, plus knoppen voor regels en gamekeuzes.
 Server Members Intent moet aan in het Developer Portal (voor deze bot ingesteld).
 Message Content en Presence blijven uit. De bot moet online zijn bij het joinen.

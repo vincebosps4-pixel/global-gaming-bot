@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, patch
 import discord
 from bot import CHANNELS, GUILD_ID, LoungeBot, PublishPreview, announcement_embed, is_manager, template_embeds, upsert_embed, welcome_card, welcome_payload
 from storage import Store
+from bot import ProfilePanel, eligible_chat, gamer_card, pass_file, player_sheet, profile
 from PIL import Image
 
 
@@ -216,6 +217,95 @@ class PublishingTest(unittest.IsolatedAsyncioTestCase):
         interaction.permissions.manage_guild = True
         self.assertTrue(await view.interaction_check(interaction))
         view.stop()
+
+
+class PlayerPassTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.path = Path(self.tmp.name)/"community.sqlite3"
+        self.store = Store(self.path)
+        self.member = SimpleNamespace(id=17, bot=False, display_name="Very Long Player 名",
+            roles=[SimpleNamespace(name=s) for s in ("🎮 Fortnite","🖥️ PC","🇳🇱 Netherlands","🛡️ Moderator")])
+        self.channel = SimpleNamespace(id=CHANNELS["general"],send=AsyncMock())
+        perms = SimpleNamespace(view_channel=True,send_messages=True,attach_files=True)
+        self.i = SimpleNamespace(user=self.member,guild_id=GUILD_ID,channel_id=self.channel.id,channel=self.channel,
+            permissions=perms,app_permissions=perms,response=SimpleNamespace(send_message=AsyncMock(),defer=AsyncMock()),
+            edit_original_response=AsyncMock())
+
+    def tearDown(self):
+        self.store.close()
+        self.tmp.cleanup()
+
+    async def test_opt_in_limits_duplicate_restart_day_boundary_and_pause(self):
+        clock = 86400*5
+        self.assertFalse(self.store.award_chat_xp(17,clock))
+        self.assertEqual(self.store.db.execute("SELECT COUNT(*) FROM gamer_profiles").fetchone()[0],0)
+        self.store.profile_preference(17,tracking=True)
+        for n in range(10):
+            self.assertTrue(self.store.award_chat_xp(17,clock+n*180))
+            self.assertFalse(self.store.award_chat_xp(17,clock+n*180+179))
+        self.store.close()
+        self.store = Store(self.path)
+        self.assertFalse(self.store.award_chat_xp(17,clock+3600))
+        sheet = player_sheet(self.member,self.store.profile(17))
+        self.assertEqual((sheet["xp"],sheet["details"]["Badges"]),(100,["First Level-Up"]))
+        self.assertTrue(self.store.award_chat_xp(17,clock+86400))
+        self.assertFalse(self.store.award_chat_xp(17,clock))
+        self.store.profile_preference(17,tracking=False)
+        self.assertFalse(self.store.award_chat_xp(17,clock+86400*2))
+        self.assertEqual(self.store.profile(17)["xp"],110)
+
+    async def test_only_social_human_messages_count_without_inspecting_content(self):
+        msg = SimpleNamespace(guild=SimpleNamespace(id=GUILD_ID),channel=self.channel,
+                              author=self.member,type=discord.MessageType.reply,webhook_id=None)
+        self.assertTrue(eligible_chat(msg))
+        for key,bad in (("guild",None),("guild",SimpleNamespace(id=8)),("webhook_id",42),
+                        ("author",SimpleNamespace(bot=True)),("channel",SimpleNamespace(id=5)),
+                        ("type",discord.MessageType.premium_guild_subscription)):
+            old = getattr(msg,key)
+            setattr(msg,key,bad)
+            self.assertFalse(eligible_chat(msg))
+            setattr(msg,key,old)
+
+    async def test_hidden_fields_excluded_from_card_alt_and_avatar_fetch(self):
+        p=ProfilePanel(self.store,17,self.channel.id)
+        self.store.profile_preference(17,fields=6)
+        await p.draw(self.member)  # No display_avatar provided: hidden avatar must never be fetched.
+        self.assertEqual(p.sheet["details"],{"Games":["Fortnite"],"Devices":["PC"]})
+        self.assertIsNone(p.sheet["xp"])
+        with Image.open(io.BytesIO(p.raw)) as im:
+            self.assertEqual(im.size,(1000,416))
+        self.store.profile_preference(17,fields=0)
+        await p.draw(self.member)
+        f=pass_file(p.raw,p.sheet)
+        try:
+            self.assertEqual(f.description,"Global Gaming player pass: Very Long Player 名")
+        finally:
+            f.close()
+        p.stop()
+
+    async def test_private_by_default_shared_once_and_only_by_owner(self):
+        self.store.profile_preference(17,fields=0)
+        with patch("bot.bot.community", SimpleNamespace(store=self.store)):
+            await profile.callback(self.i)
+        self.i.response.defer.assert_awaited_once_with(ephemeral=True,thinking=True)
+        self.channel.send.assert_not_awaited()
+        p=self.i.edit_original_response.await_args.kwargs["view"]
+        self.assertTrue(await p.interaction_check(self.i))
+        other=SimpleNamespace(**{**vars(self.i),"user":SimpleNamespace(id=18)})
+        self.assertFalse(await p.interaction_check(other))
+        self.store.profile_preference(17,fields=2)
+        await p.share.callback(self.i)
+        self.channel.send.assert_not_awaited()
+        await p.refresh(self.i)
+        self.i.permissions.attach_files=False
+        await p.share.callback(self.i)
+        self.channel.send.assert_not_awaited()
+        self.i.permissions.attach_files=True
+        await p.share.callback(self.i)
+        await p.share.callback(self.i)
+        self.channel.send.assert_awaited_once()
+        p.stop()
 
 
 if __name__ == "__main__":

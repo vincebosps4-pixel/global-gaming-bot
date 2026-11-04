@@ -36,7 +36,37 @@ class Store:
             CREATE TABLE IF NOT EXISTS welcomes(
                 member INTEGER PRIMARY KEY, joined TEXT NOT NULL,
                 message INTEGER, created INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS gamer_profiles(
+                member INTEGER PRIMARY KEY, fields INTEGER NOT NULL DEFAULT 31,
+                tracking INTEGER NOT NULL DEFAULT 0, xp INTEGER NOT NULL DEFAULT 0,
+                last_award INTEGER NOT NULL DEFAULT -86400, day INTEGER NOT NULL DEFAULT -1,
+                day_xp INTEGER NOT NULL DEFAULT 0);
         """)
+
+    def profile(self, member: int):
+        row = self.db.execute("SELECT fields,tracking,xp FROM gamer_profiles WHERE member=?", (member,)).fetchone()
+        return dict(row) if row else dict(fields=31, tracking=0, xp=0)
+
+    def profile_preference(self, member: int, *, fields=None, tracking=None):
+        with self.db:
+            self.db.execute("INSERT OR IGNORE INTO gamer_profiles(member) VALUES(?)", (member,))
+            if fields is not None:
+                if not 0 <= fields <= 31:
+                    raise ValueError("Invalid profile fields")
+                self.db.execute("UPDATE gamer_profiles SET fields=? WHERE member=?", (fields, member))
+            if tracking is not None:
+                self.db.execute("UPDATE gamer_profiles SET tracking=? WHERE member=?", (int(bool(tracking)), member))
+
+    def award_chat_xp(self, member: int, timestamp: int) -> bool:
+        # One atomic update: no record is created for someone who never opted in.
+        day = timestamp // 86400
+        with self.db:
+            return self.db.execute("""
+                UPDATE gamer_profiles SET xp=xp+10, last_award=?, day=?,
+                    day_xp=CASE WHEN day=? THEN day_xp+10 ELSE 10 END
+                WHERE member=? AND tracking=1 AND last_award<=?
+                    AND (day<>? OR day_xp<100)
+            """, (timestamp, day, day, member, timestamp - 180, day)).rowcount == 1
 
     def close(self):
         self.db.close()

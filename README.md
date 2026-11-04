@@ -26,8 +26,13 @@ Giveaways beginnen pas nadat een beheerder een echte prijs, looptijd en regels h
 
 ## Discord-opdrachten
 
+Met **/profile** ziet een lid eerst privé de eigen blauw-roze gamerkaart. Naam staat erop; avatar, games, apparaten, badges en level/XP zijn los aan of uit te zetten via het keuzemenu (ook alles uit). Games en apparaten volgen de huidige onboardingrollen. Deel vanuit een gewone community- of gamechat met **Share in this channel**. Zowel bot als lid moeten daar afbeeldingen mogen bijvoegen. Een eerder gedeelde kaart is een momentopname.
+
+**Start earning XP** is optioneel en standaard uit. Een gewoon chatbericht of antwoord in een van de vaste community- of gamechats levert 10 XP op: maximaal eens per drie minuten en 100 XP per UTC-dag. Geen XP voor bots, webhooks, tickets, staff, privéberichten, threads, voice of offline activiteit. Elke 100 XP geeft een level. Badges: level 2 First Level-Up, 5 Squad Regular, 10 Veteran, 25 GG Legend. **Pause earning XP** stopt het verdienen en behoudt de voortgang. Levels en badges zijn cosmetisch; ze geven geen serverrechten. De host bewaart alleen het lid-ID, zichtbaarheid, deelnamekeuze, XP en de laatste beloningsperiode; geen berichttekst, avatar of rollenlijst.
+
 | Opdracht | Functie |
 |---|---|
+| '/profile' | Persoonlijke gamerkaart, weergavekeuzes en optionele levels |
 | `/community_help` | Privéoverzicht van tickets, giveaways en rolkeuzes |
 | `/announce` | Aankondiging met privévoorbeeld en publicatieknop |
 | `/welcome_preview` | Je eigen welkomstkaartje bekijken, alleen voor jou zichtbaar |

@@ -8,6 +8,7 @@ import math
 import os
 import re
 import unicodedata
+from contextlib import closing
 from datetime import timezone
 from pathlib import Path
 
@@ -40,6 +41,128 @@ CHANNELS = {
 }
 GUILD = discord.Object(id=GUILD_ID)
 NO_MENTIONS = discord.AllowedMentions.none()
+
+# Only known public community rooms and role-selected game rooms; never ticket or staff channels.
+SOCIAL_CHANNELS = frozenset({
+    CHANNELS["general"], CHANNELS["international-chat"], CHANNELS["introductions"], CHANNELS["media"],
+    1567600290235031613, 1567600414130569216, 1567600509790191759, 1567600562604744714,
+    1567600615750770819, CHANNELS["cod-chat"], CHANNELS["gta-vi-chat"],
+    *(channel for name, channel in CHANNELS.items() if "looking-for-" in name or "lfg" in name),
+})
+GAME_NAMES = ("Fortnite", "Minecraft", "Rocket League", "Roblox", "Call of Duty", "GTA VI", "Other Games")
+DEVICE_NAMES = ("PC", "PlayStation", "Xbox", "Nintendo Switch", "Mobile / Tablet", "VR")
+PROFILE_FIELDS = (("Avatar", 1), ("Games", 2), ("Devices", 4), ("Badges", 8), ("Level & XP", 16))
+MILESTONES = ((2, "First Level-Up"), (5, "Squad Regular"), (10, "Veteran"), (25, "GG Legend"))
+
+
+def eligible_chat(message):
+    return (message.guild is not None and message.guild.id == GUILD_ID and
+            message.channel.id in SOCIAL_CHANNELS and message.type in (discord.MessageType.default, discord.MessageType.reply)
+            and not message.author.bot and message.webhook_id is None)
+
+
+def player_sheet(member, prefs):
+    # Recognise onboarding labels, including their decorative emoji, never arbitrary staff/country roles.
+    labels = {re.sub(r"^[^A-Za-z0-9]+", "", r.name).casefold() for r in member.roles}
+    flags, xp = prefs["fields"], prefs["xp"]
+    level = 1 + xp // 100
+    details = {}
+    if flags & 2:
+        details["Games"] = [g for g in GAME_NAMES if g.casefold() in labels]
+    if flags & 4:
+        details["Devices"] = [d for d in DEVICE_NAMES if d.casefold() in labels]
+    if flags & 8:
+        details["Badges"] = [label for minimum, label in MILESTONES if level >= minimum]
+    return {"name": member.display_name, "avatar": bool(flags & 1), "details": details,
+            "xp": xp if flags & 16 and (prefs["tracking"] or xp) else None}
+
+
+def gamer_card(sheet, avatar=None):
+    """A locally rendered collectible player pass; only receives visible details."""
+    from PIL import Image, ImageDraw, ImageFont, ImageOps
+    from functools import lru_cache
+
+    @lru_cache(maxsize=64)
+    def font(size, bold=False):
+        for path in (("segoeuib.ttf", "DejaVuSans-Bold.ttf") if bold else ("segoeui.ttf", "DejaVuSans.ttf")):
+            try:
+                return ImageFont.truetype(path, size)
+            except OSError:
+                pass
+        return ImageFont.load_default(size=size)
+
+    cyan, pink, white, muted = "#39D9FF", "#FF489F", "#F4F7FF", "#A9BAD3"
+    height = 288 + 64 * len(sheet["details"])
+    card = Image.new("RGB", (1000, height), "#0B1021")
+    d = ImageDraw.Draw(card)
+    for y in range(height):
+        d.line((0, y, 1000, y), fill=(11 + y * 5 // height, 16, 33 + y * 12 // height))
+    for x in range(640, 1240, 28):
+        d.line((x, 1, x - 138, 236), fill="#232741")
+    d.polygon([(0,0),(282,0),(265,7),(0,7)], fill=cyan)
+    d.polygon([(830,0),(1000,0),(1000,7),(814,7)], fill=pink)
+    d.text((37,24), "GG  /  GLOBAL GAMING", font=font(21,True), fill=white)
+    d.text((959,30), "COMMUNITY   /   PLAYER PASS", anchor="ra", font=font(15,True), fill=cyan)
+    d.line((38,65,959,65), fill="#34405C")
+    left = 42
+    if sheet["avatar"]:
+        box = (43,91,171,219)
+        d.ellipse((38,86,176,224), fill="#0A1020", outline=cyan, width=3)
+        d.arc((38,86,176,224), -70, 95, fill=pink, width=4)
+        face = None
+        if avatar:
+            try:
+                with Image.open(io.BytesIO(avatar), formats=("PNG","JPEG","WEBP")) as im:
+                    if im.width * im.height < 4194304:
+                        face = ImageOps.fit(im.convert("RGB"), (128,128), method=Image.Resampling.LANCZOS)
+            except (OSError, ValueError, Image.DecompressionBombError):
+                pass
+        if face is None:
+            face = Image.new("RGB",(128,128),"#192A45")
+            ImageDraw.Draw(face).text((64,63),"GG",font=font(37,True),fill=cyan,anchor="mm")
+        mask = Image.new("L",(128,128))
+        ImageDraw.Draw(mask).ellipse((0,0,127,127),fill=255)
+        card.paste(face,box[:2],mask)
+        left = 210
+    d.text((left,88),"PLAYER PROFILE",font=font(17,True),fill=pink)
+    name = " ".join("".join(c for c in sheet["name"] if not unicodedata.category(c).startswith("C")).split())[:100] or "Player"
+    size = 48
+    while size > 24 and d.textlength(name,font=font(size,True)) > 952-left:
+        size -= 2
+    if d.textlength(name,font=font(size,True)) > 952-left:
+        while name and d.textlength(name+"…",font=font(size,True)) > 952-left:
+            name = name[:-1]
+        name += "…"
+    d.text((left,111), name, font=font(size,True), fill=white)
+    xp = sheet["xp"]
+    if xp is not None:
+        level, progress = 1+xp//100, xp%100
+        d.text((left,177),f"LEVEL {level:02d}",font=font(19,True),fill=cyan)
+        d.text((957,177),f"{progress} / 100 XP TO NEXT LEVEL",font=font(16),fill=muted,anchor="ra")
+        d.rounded_rectangle((left,209,958,217),4,fill="#2A344B")
+        if progress:
+            d.rounded_rectangle((left,209,left+max(8,(958-left)*progress//100),217),4,fill=cyan)
+    else:
+        d.text((left,184),"THE GLOBAL GAMING COMMUNITY",font=font(16),fill=muted)
+    for i,(label,values) in enumerate(sheet["details"].items()):
+        y = 241 + i*64
+        d.rounded_rectangle((37,y,961,y+52),10,fill="#182136",outline="#2A3850")
+        accent = (cyan,pink,cyan)[i]
+        d.rectangle((38,y+12,41,y+40),fill=accent)
+        d.text((58,y+15),label.upper(),font=font(16,True),fill=accent)
+        body = "   /   ".join(values) or ("No badges yet" if label=="Badges" else "None selected")
+        size = 21
+        while size>12 and d.textlength(body,font=font(size,True))>763:
+            size -= 1
+        d.text((173,y+12),body,font=font(size,True),fill=white if values else muted)
+    d.text((39,height-26),"GG   //   PLAYER SERIES",font=font(12,True),fill=muted)
+    d.line((212,height-17,865,height-17),fill="#31405B")
+    for j in range(6):
+        x=886+j*12
+        d.polygon([(x,height-13),(x+5,height-21),(x+11,height-21),(x+6,height-13)],fill=cyan if j<3 else pink)
+    out=io.BytesIO()
+    card.save(out,format="PNG")
+    return out.getvalue()
 
 
 def welcome_card(display_name: str, avatar: bytes | None = None) -> bytes:
@@ -388,6 +511,7 @@ class LoungeBot(discord.Client):
         self.community = None
         self.instance_lock = None
         self.welcome_slots = asyncio.Semaphore(2)
+        self.profile_slots = asyncio.Semaphore(2)
 
     async def setup_hook(self):
         if self.user.id != 1567606693674885302:
@@ -454,6 +578,8 @@ class LoungeBot(discord.Client):
 
     async def on_message(self, message):
         if self.community is not None:
+            if eligible_chat(message) and os.getenv("PUBLISH_ONCE", "false").lower() != "true":
+                self.community.store.award_chat_xp(message.author.id, int(message.created_at.timestamp()))
             await self.community.boost_message(message)
 
     async def on_member_join(self, member):
@@ -498,6 +624,118 @@ class LoungeBot(discord.Client):
 
 
 bot = LoungeBot()
+
+
+def pass_file(raw, sheet):
+    caption = [f"Global Gaming player pass: {sheet['name']}"]
+    if sheet["xp"] is not None:
+        xp = sheet["xp"]
+        caption.append(f"Level {1+xp//100}, {xp%100}/100 XP towards the next level")
+    caption.extend(f"{key}: {', '.join(items) or 'None'}" for key,items in sheet["details"].items())
+    return discord.File(io.BytesIO(raw),filename="global-gaming-profile.png",description=". ".join(caption)[:1024])
+
+
+class ProfilePanel(discord.ui.View):
+    def __init__(self, store, owner, channel):
+        super().__init__(timeout=180)
+        self.store, self.owner, self.channel = store, owner, channel
+        self.lock = asyncio.Lock()
+        self.shared = False
+
+    async def interaction_check(self, interaction):
+        if interaction.guild_id == GUILD_ID and interaction.user.id == self.owner and interaction.channel_id == self.channel:
+            return True
+        await interaction.response.send_message("Use /profile to open your own player pass.",ephemeral=True)
+        return False
+
+    async def draw(self, member):
+        prefs = self.store.profile(self.owner)
+        sheet = player_sheet(member, prefs)
+        async with bot.profile_slots:
+            avatar = None
+            if sheet["avatar"]:
+                try:
+                    avatar = await asyncio.wait_for(member.display_avatar.with_size(256).with_format("png").read(),timeout=5)
+                except (discord.HTTPException, asyncio.TimeoutError, OSError):
+                    pass
+            raw = await asyncio.to_thread(gamer_card, sheet, avatar)
+        self.sheet, self.raw = sheet, raw
+        self.fields_mask, self.tracking = prefs["fields"], bool(prefs["tracking"])
+        self.fields.options = [discord.SelectOption(label=label,value=str(bit),default=bool(self.fields_mask & bit))
+                               for label,bit in PROFILE_FIELDS]
+        self.levels.label = "Pause earning XP" if self.tracking else "Start earning XP"
+        self.share.disabled = self.shared or self.channel not in SOCIAL_CHANNELS
+        self.share.label = "Shared in this channel" if self.shared else "Share in this channel"
+        return ("**Your player pass · private preview**\nChoose which details appear on the card. "
+                "Games and devices come from **Channels & Roles**. Your display name is always shown.\n"
+                f"**XP earning: {'on' if self.tracking else 'off'}.** Earn 10 XP per eligible chat message, at most once "
+                "every 3 minutes and up to 100 XP per UTC day. Every 100 XP is one level; badges unlock at levels 2, 5, 10 and 25. "
+                "Pausing keeps your progress." +
+                ("\nOpen /profile in a community or game chat to share it." if self.channel not in SOCIAL_CHANNELS else ""))
+
+    async def refresh(self, interaction):
+        self.delivered = False
+        content = await self.draw(interaction.user)
+        with closing(pass_file(self.raw,self.sheet)) as pic:
+            await interaction.edit_original_response(content=content,attachments=[pic],view=self,allowed_mentions=NO_MENTIONS)
+        self.delivered = True
+
+    @discord.ui.select(placeholder="Choose details shown on your card",min_values=0,max_values=5,
+                       options=[discord.SelectOption(label=label,value=str(bit)) for label,bit in PROFILE_FIELDS],row=0)
+    async def fields(self, interaction:discord.Interaction, select:discord.ui.Select):
+        chosen = sum({int(s) for s in select.values if s in {"1","2","4","8","16"}})
+        await interaction.response.defer()
+        async with self.lock:
+            self.store.profile_preference(self.owner, fields=chosen)
+            await self.refresh(interaction)
+
+    @discord.ui.button(label="Start earning XP",style=discord.ButtonStyle.primary,row=1)
+    async def levels(self, interaction:discord.Interaction, button:discord.ui.Button):
+        target = not self.tracking
+        await interaction.response.defer()
+        async with self.lock:
+            self.store.profile_preference(self.owner,tracking=target)
+            await self.refresh(interaction)
+
+    @discord.ui.button(label="Share in this channel",style=discord.ButtonStyle.secondary,row=1)
+    async def share(self, interaction:discord.Interaction, button:discord.ui.Button):
+        await interaction.response.defer(ephemeral=True,thinking=True)
+        async with self.lock:
+            if self.shared:
+                note = "This preview was already shared."
+            elif self.channel not in SOCIAL_CHANNELS or not all(
+                    p.view_channel and p.send_messages and p.attach_files for p in (interaction.permissions,interaction.app_permissions)):
+                note = "Use /profile in a community or game chat where both you and the bot may attach files."
+            elif not self.delivered or self.store.profile(self.owner)["fields"] != self.fields_mask:
+                note = "Your visibility settings have changed. Open /profile again before sharing."
+            else:
+                self.shared = True
+                try:
+                    with closing(pass_file(self.raw,self.sheet)) as pic:
+                        await interaction.channel.send(file=pic,allowed_mentions=NO_MENTIONS)
+                except discord.Forbidden:
+                    self.shared = False
+                    note = "Discord did not allow this upload. Try a chat where the bot can attach files."
+                except (discord.HTTPException,OSError):
+                    note = "The upload could not be confirmed. Check the channel before opening a new preview."
+                else:
+                    self.share.disabled, self.share.label = True, "Shared in this channel"
+                    note = "Your player pass was shared in this channel."
+            await interaction.edit_original_response(content=note,allowed_mentions=NO_MENTIONS)
+            if self.shared:
+                try:
+                    await self.origin.edit_original_response(view=self)
+                except discord.HTTPException:
+                    pass
+
+
+@bot.tree.command(name="profile", description="Customize your private player pass, choose optional levels, or share your card.",guild=GUILD)
+@app_commands.guild_only()
+async def profile(interaction:discord.Interaction):
+    await interaction.response.defer(ephemeral=True,thinking=True)
+    panel = ProfilePanel(bot.community.store,interaction.user.id,interaction.channel_id)
+    panel.origin = interaction
+    await panel.refresh(interaction)
 
 
 class PublishPreview(discord.ui.View):
