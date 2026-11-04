@@ -17,6 +17,10 @@ De pc moet aan, aangemeld en online blijven. Het scherm mag vergrendeld zijn.
 De bot start na Windows-aanmelding als het aanmaken van de geplande taak lukt.
 Er worden geen betaalde diensten afgesloten.
 
+Versie 1.0.6 voegt Among Us toe aan de gamerkaart, groepskanalen en chat-XP.
+Als iemand is gejoind terwijl de bot offline was, kan een serverbeheerder
+/welcome_member gebruiken en het lid kiezen om het kaartje alsnog te sturen.
+
 In 1.0.5 krijgen de gamerkaart en de persoonlijke welkomstkaart een zwarte
 achtergrond met neonblauwe en roze accenten.
 

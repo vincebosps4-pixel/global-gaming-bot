@@ -291,7 +291,7 @@ class CommunityFeatures:
             embed = discord.Embed(title='🌍 Global Gaming help',colour=BLUE,description=f'**Tickets:** <#{PANEL_ID}>\n**Giveaways:** <#{GIVEAWAY_ID}>\n**Boosts:** <#{BOOST_ID}>\n**Roles:** Open Channels & Roles; every question is optional.')
             embed.add_field(name='Player pass',value='Use /profile to customize your gamer card, earn optional chat levels and badges, or share your card.',inline=False)
             if self.is_manager(interaction):
-                embed.add_field(name='Staff commands',value='`/announce` · `/welcome_preview` · `/giveaway` · `/giveaway_cancel` · `/setup_embeds` · `/setup_community` · `/bot_status`',inline=False)
+                embed.add_field(name='Staff commands',value='`/announce` · `/welcome_preview` · `/welcome_member` · `/giveaway` · `/giveaway_cancel` · `/setup_embeds` · `/setup_community` · `/bot_status`',inline=False)
             await interaction.response.send_message(embed=embed,ephemeral=True)
 
     async def setup(self):

@@ -28,6 +28,7 @@ class WelcomeTests(unittest.IsolatedAsyncioTestCase):
             guild=SimpleNamespace(me=object()), permissions_for=lambda member: SimpleNamespace(attach_files=True))
         self.client = SimpleNamespace(community=SimpleNamespace(store=self.store),
             welcome_slots=asyncio.Semaphore(2), destination=AsyncMock(return_value=self.channel))
+        self.client.send_member_welcome = LoungeBot.send_member_welcome.__get__(self.client)
 
     def tearDown(self):
         self.store.close()
@@ -44,6 +45,17 @@ class WelcomeTests(unittest.IsolatedAsyncioTestCase):
         self.member.joined_at += timedelta(days=1)
         await LoungeBot.on_member_join(self.client,self.member)
         self.assertEqual(self.channel.send.await_count,2)
+
+    async def test_manual_welcome_after_offline_join_deduplicates_gateway_delivery(self):
+        from bot import welcome_member
+        self.assertTrue(welcome_member.default_permissions.manage_guild)
+        self.assertIn(is_manager, welcome_member.checks)
+        interaction = SimpleNamespace(response=SimpleNamespace(defer=AsyncMock()), followup=SimpleNamespace(send=AsyncMock()))
+        with patch("bot.bot", self.client):
+            await welcome_member.callback(interaction,self.member)
+        await LoungeBot.on_member_join(self.client,self.member)
+        self.channel.send.assert_awaited_once()
+        self.assertIn("Welcome posted", interaction.followup.send.await_args.args[0])
 
     async def test_bots_other_servers_and_one_shot_publish_do_not_get_welcomes(self):
         self.member.bot = True
@@ -119,8 +131,8 @@ class TemplatesTest(unittest.TestCase):
     def test_embeds_fit_discord_limits(self):
         templates = template_embeds()
         self.assertEqual(set(templates), set(CHANNELS))
-        self.assertEqual(len(templates), 17)
-        self.assertEqual([e.colour.value for e in templates.values()], ([0x00BFFF, 0xFF2D95] * 9)[:17])
+        self.assertEqual(len(templates), 19)
+        self.assertEqual([e.colour.value for e in templates.values()], ([0x00BFFF, 0xFF2D95] * 10)[:19])
         for embed in templates.values():
             self.assertLessEqual(len(embed), 6000)
             self.assertLessEqual(len(embed.title), 256)

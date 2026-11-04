@@ -1,6 +1,6 @@
 # Global Gaming
 
-Communitybot voor Global Gaming: Fortnite, Minecraft, Rocket League, Roblox, Call of Duty en GTA VI-discussies. Neonblauw `#00BFFF` en felroze `#FF2D95`; Engelstalige berichten voor een internationale community.
+Communitybot voor Global Gaming met Fortnite, Minecraft, Rocket League, Roblox, Call of Duty, Among Us en GTA VI-discussies. De Engelstalige berichten en kaarten gebruiken neonblauw en felroze.
 
 ## Op je Windows-pc starten
 
@@ -15,12 +15,12 @@ Communitybot voor Global Gaming: Fortnite, Minecraft, Rocket League, Roblox, Cal
 ## Functies
 
 - Persoonlijk welkomstbericht in `👋・welcome` voor nieuwe leden, met een lokaal gemaakt neonblauw/roze kaartje, hun Discord-profielfoto en naam, en knoppen voor regels en gamekeuzes. Geen externe afbeeldingsdienst nodig. Werkt terwijl de bot online is; geen inhaalberichten voor joins tijdens offline tijd en geen welkomstspam bij opstarten. Bots krijgen geen kaartje.
-- 17 vaste informatie-embeds, zonder dubbele starterberichten. Alleen eigen herkenbare berichten worden bijgewerkt.
+- 19 vaste informatie-embeds, inclusief de Among Us-chat en het groepszoekkanaal. Alleen eigen herkenbare berichten worden bijgewerkt.
 - Eenmalige kanaalopmaak: `👋・welcome`, `💬・chat`, `🔎・looking-for-group` enzovoort. ID's en inhoud blijven behouden.
 - Ticketpaneel met formulier en één open ticket per lid. Alleen de aanvrager, Support Team, serverbeheerders en bot kunnen het zien. Sluiten maakt het voor de aanvrager alleen-lezen; Support Team kan heropenen. Geen automatische verwijdering of externe transcripten.
 - Giveaways met privévoorbeeld, publicatiebevestiging, deelnameknop, één deelname per account, eindtijd en willekeurige winnaars. Na een herstart blijven deelnemers en eenmaal getrokken winnaars behouden. Als de bot bij de eindtijd offline is, verwerkt hij de uitslag zodra hij online komt; late deelname is gesloten.
 - Roze boostbedankjes wanneer Discord een boost-systeembericht verstuurt terwijl de bot online is. Zet deze systeemberichten aan in de serverinstellingen. Discord beheert zelf de Server Booster-rol.
-- De bestaande optionele game-, land- en apparaatrollen blijven via Discord Onboarding werken, ook zonder online bot: zeven gamekeuzes, 31 landkeuzes en zes apparaatkeuzes. De zes game-rollen tonen hun eigen categorie; uitvinken verbergt die weer. Algemene kanalen blijven zichtbaar. Other Games, land en apparaat zijn profielrollen.
+- Discord Onboarding biedt acht optionele gamekeuzes, 31 landkeuzes en zes apparaatkeuzes. Zeven gamerollen geven toegang tot de bijbehorende categorie. Uitvinken verbergt die weer. Other Games, land en apparaat zijn profielrollen.
 
 Giveaways beginnen pas nadat een beheerder een echte prijs, looptijd en regels heeft bevestigd. Er is geen wedstrijd met een verzonnen prijs gestart. GTA VI is een nieuws- en discussiecategorie; de bot haalt geen automatisch nieuws op.
 
@@ -36,6 +36,7 @@ Met **/profile** ziet een lid eerst privé de eigen blauw-roze gamerkaart. Naam 
 | `/community_help` | Privéoverzicht van tickets, giveaways en rolkeuzes |
 | `/announce` | Aankondiging met privévoorbeeld en publicatieknop |
 | `/welcome_preview` | Je eigen welkomstkaartje bekijken, alleen voor jou zichtbaar |
+| `/welcome_member` | Als beheerder een gemist welkom na een offline join plaatsen voor één gekozen lid. De automatische en handmatige route delen dezelfde controle op dubbele kaartjes. |
 | `/giveaway` | Gratis giveaway voorbereiden: prijs, minuten, winnaars, regels |
 | `/giveaway_cancel` | Annuleren met bevestiging; bericht blijft behouden |
 | `/setup_embeds` | Vaste embeds vernieuwen |

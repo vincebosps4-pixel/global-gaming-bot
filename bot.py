@@ -38,6 +38,8 @@ CHANNELS = {
     "server-boosts": 1567624635183530118,
     "giveaways": 1567624640912822423,
     "media": 1567624652367335475,
+    "among-us-chat": 1567672562769600634,
+    "among-us-looking-for-group": 1567672572743655525,
 }
 GUILD = discord.Object(id=GUILD_ID)
 NO_MENTIONS = discord.AllowedMentions.none()
@@ -47,10 +49,10 @@ CARD_BACKGROUND = "#000000"
 SOCIAL_CHANNELS = frozenset({
     CHANNELS["general"], CHANNELS["international-chat"], CHANNELS["introductions"], CHANNELS["media"],
     1567600290235031613, 1567600414130569216, 1567600509790191759, 1567600562604744714,
-    1567600615750770819, CHANNELS["cod-chat"], CHANNELS["gta-vi-chat"],
+    1567600615750770819, CHANNELS["cod-chat"], CHANNELS["gta-vi-chat"], CHANNELS["among-us-chat"],
     *(channel for name, channel in CHANNELS.items() if "looking-for-" in name or "lfg" in name),
 })
-GAME_NAMES = ("Fortnite", "Minecraft", "Rocket League", "Roblox", "Call of Duty", "GTA VI", "Other Games")
+GAME_NAMES = ("Fortnite", "Minecraft", "Rocket League", "Roblox", "Call of Duty", "GTA VI", "Among Us", "Other Games")
 DEVICE_NAMES = ("PC", "PlayStation", "Xbox", "Nintendo Switch", "Mobile / Tablet", "VR")
 PROFILE_FIELDS = (("Avatar", 1), ("Games", 2), ("Devices", 4), ("Badges", 8), ("Level & XP", 16))
 MILESTONES = ((2, "First Level-Up"), (5, "Squad Regular"), (10, "Veteran"), (25, "GG Legend"))
@@ -276,7 +278,7 @@ def template_embeds() -> dict[str, discord.Embed]:
         title="🌍 Welcome to Global Gaming Lounge!",
         description="**Find your squad. Meet new friends. Make yourself at home.**\n\n"
         "🎮 Fortnite  •  ⛏️ Minecraft  •  🚗 Rocket League  •  🧱 Roblox\n"
-        "🎖️ Call of Duty  •  🌴 GTA VI news & discussion\n\n"
+        "🎖️ Call of Duty  •  🌴 GTA VI news & discussion  •  🔴 Among Us\n\n"
         "**13+ community** · Meet Discord's minimum age for your country.",
         colour=0x00BFFF,
     )
@@ -319,7 +321,7 @@ def template_embeds() -> dict[str, discord.Embed]:
 
     news = discord.Embed(title="📣 Community Updates", colour=0x00BFFF,
                         description="**Welcome to the start of Global Gaming Lounge!**\n\n"
-                        "Explore Fortnite, Minecraft, Rocket League, Roblox and Call of Duty, "
+                        "Explore Fortnite, Minecraft, Rocket League, Roblox, Call of Duty and Among Us, "
                         "plus GTA VI news and discussion. "
                         "Say hello, find teammates and help build a friendly international community.")
     news.add_field(name="📅 Game nights", value="Confirmed events and community news will be posted here. Event times will include a timezone.", inline=False)
@@ -330,7 +332,7 @@ def template_embeds() -> dict[str, discord.Embed]:
         "**All skill levels are welcome.**",
     )
     general.add_field(name="🌍 More languages", value="Want to chat in another language? Head to <#1567600218910761040>.", inline=False)
-    general.add_field(name="🎮 Start the conversation", value="What are you playing today — Fortnite, Minecraft, Rocket League, Roblox or Call of Duty? Or join the GTA VI conversation!", inline=False)
+    general.add_field(name="🎮 Start the conversation", value="What are you playing today — Fortnite, Minecraft, Rocket League, Roblox, Call of Duty or Among Us? Or join the GTA VI conversation!", inline=False)
 
     international = discord.Embed(
         title="🌐 All languages welcome!",
@@ -439,6 +441,11 @@ def template_embeds() -> dict[str, discord.Embed]:
     media.add_field(name="✨ Give credit", value="Share your own work or content you have permission to post. Credit the original creator when appropriate; no stolen art or spam advertising.", inline=False)
     media.add_field(name="🩷 Keep it comfortable", value="No graphic or sexual content. Use spoiler tags for story spoilers, and get permission before sharing other people's voices, faces or private messages.", inline=False)
 
+    among_chat = discord.Embed(title="🔴 Among Us • Crew chat",
+        description=f"Talk maps, outfits and your most convincing alibis. Find players in <#{CHANNELS['among-us-looking-for-group']}> and meet in **Lobby**.")
+    among_lfg = discord.Embed(title="🚀 Find an Among Us crew",
+        description="Share the map, region, language, open spots and start time. Let your crew know if you are playing with voice or text.")
+    among_lfg.add_field(name="Looking for crewmates", value="The Skeld • Europe • English • 3 spots • starting in 10 minutes. Reply to join!",inline=False)
     result = {
         "welcome": welcome, "rules": rules, "announcements": news,
         "general": general, "international-chat": international,
@@ -448,6 +455,7 @@ def template_embeds() -> dict[str, discord.Embed]:
         "cod-chat": cod_chat, "cod-looking-for-group": cod_lfg,
         "gta-vi-chat": gta_chat, "gta-vi-news": gta_news,
         "server-boosts": boosts, "giveaways": giveaways, "media": media,
+        "among-us-chat": among_chat, "among-us-looking-for-group": among_lfg,
     }
     for index, (key, embed) in enumerate(result.items()):
         embed.colour = discord.Colour(0x00BFFF if index % 2 == 0 else 0xFF2D95)
@@ -574,10 +582,14 @@ class LoungeBot(discord.Client):
             await self.community.boost_message(message)
 
     async def on_member_join(self, member):
+        await self.send_member_welcome(member)
+
+    async def send_member_welcome(self, member):
+        """Deliver once per join, including a manager's explicit request following an outage."""
         if member.guild.id != GUILD_ID or member.bot or self.community is None:
-            return
+            return "Choose a human member of Global Gaming while the bot is online."
         if os.getenv("PUBLISH_ONCE", "false").lower() == "true":
-            return
+            return "Start the bot in its normal online mode to welcome a member."
         async with self.welcome_slots:
             payload = None
             try:
@@ -587,10 +599,10 @@ class LoungeBot(discord.Client):
                 joined = member.joined_at.astimezone(timezone.utc).isoformat() if member.joined_at else "unknown"
                 store = self.community.store
                 if store.has_welcome(member.id, joined):
-                    return
+                    return "This join already has a welcome attempt. Check the welcome channel."
                 payload = await welcome_payload(member)
                 if not store.claim_welcome(member.id, joined):
-                    return
+                    return "A welcome for this join is already being handled."
                 try:
                     sent = await channel.send(**payload)
                 except (discord.Forbidden, discord.NotFound):
@@ -598,8 +610,10 @@ class LoungeBot(discord.Client):
                     raise
                 # On an ambiguous transport error keep the claim: never blindly send twice.
                 store.complete_welcome(member.id, joined, sent.id)
+                return f"Welcome posted in <#{CHANNELS['welcome']}>."
             except Exception as exc:
                 LOG.warning("Welcome not confirmed (%s). Check channel permissions and the welcome channel.", type(exc).__name__)
+                return "The welcome could not be confirmed. Check the welcome channel and the bot's send, embed and file permissions."
             finally:
                 if payload is not None:
                     payload["file"].close()
@@ -802,6 +816,16 @@ async def setup_embeds(interaction: discord.Interaction):
 @app_commands.check(is_manager)
 async def announce(interaction: discord.Interaction):
     await interaction.response.send_modal(AnnouncementForm())
+
+
+@bot.tree.command(name="welcome_member", description="Post a missed welcome card for one member in the welcome channel.", guild=GUILD)
+@app_commands.guild_only()
+@app_commands.default_permissions(manage_guild=True)
+@app_commands.check(is_manager)
+async def welcome_member(interaction: discord.Interaction, member: discord.Member):
+    await interaction.response.defer(ephemeral=True)
+    result = await bot.send_member_welcome(member)
+    await interaction.followup.send(result, ephemeral=True, allowed_mentions=NO_MENTIONS)
 
 
 @bot.tree.command(name="welcome_preview", description="Privately preview your personal Global Gaming welcome card.", guild=GUILD)
