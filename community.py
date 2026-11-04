@@ -43,6 +43,7 @@ VOICE_STYLE = {
     'Rocket League Duos': '🔊・Duos', 'Rocket League Trios': '🔊・Trios',
     'Roblox Party 1': '🔊・Party 1', 'Roblox Party 2': '🔊・Party 2',
     'COD Squad': '🔊・Squad', 'COD Warzone': '🔊・Warzone', 'GTA VI Lounge': '🔊・Lounge',
+    'Lounge': '🔊・Lounge',
 }
 
 
@@ -56,7 +57,7 @@ def ticket_overwrites(guild, staff, bot_member, owner=None, *, closed=False):
         staff: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True,
                                            embed_links=True),
         bot_member: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True,
-                                                embed_links=True, manage_channels=True, manage_roles=True),
+                                                embed_links=True),
     }
     if owner is not None:
         result[owner] = discord.PermissionOverwrite(

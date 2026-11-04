@@ -103,6 +103,9 @@ class PrivacyTests(unittest.TestCase):
         self.assertTrue(perms[owner].send_messages)
         self.assertFalse(perms[owner].create_private_threads)
         self.assertIsNone(perms[owner].manage_roles)
+        # Discord only permits administrators to set MANAGE_ROLES overwrites at creation.
+        # The bot inherits its approved guild permission instead.
+        self.assertIsNone(perms[bot].manage_roles)
         closed=ticket_overwrites(guild,staff,bot,owner,closed=True)
         self.assertTrue(closed[owner].view_channel)
         self.assertFalse(closed[owner].send_messages)
