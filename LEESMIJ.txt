@@ -1,0 +1,29 @@
+GLOBAL GAMING — COMMUNITYBOT
+
+Pak de volledige zip uit op je Windows-pc die 24/7 aan blijft.
+Installeer Python 3.12 of nieuwer, inclusief Python Launcher:
+https://www.python.org/downloads/windows/
+
+1. Dubbelklik START-HIER.cmd.
+2. Plak de Global Gaming-botsleutel in het verborgen invoerveld.
+3. Wacht enkele minuten op installatie en controles.
+4. Open STATUS.cmd om de verbinding te controleren.
+
+START-BOT.cmd = starten
+STOP-BOT.cmd = stoppen en automatische start uitschakelen
+STATUS.cmd = verbinding controleren
+
+De pc moet aan, aangemeld en online blijven. Het scherm mag vergrendeld zijn.
+De bot start na Windows-aanmelding als het aanmaken van de geplande taak lukt.
+Er worden geen betaalde diensten afgesloten.
+
+Embeds, privé-tickets, giveaways, boostbedankjes, kanaalopmaak en botupdates
+zitten in dit pakket. De optionele rolvragen blijven door Discord geregeld.
+Giveaways beginnen pas nadat een beheerder een echte prijs heeft opgegeven.
+
+Geheimen staan in config/token.txt; blijvende gegevens staan in data/.
+Deel of publiceer deze mappen nooit. GitHub bevat geen botsleutel.
+Bij verhuizing: stop de oude bot en neem config/ en data/ mee.
+
+Lees README.md voor rechten, opdrachten, updates en herstel.
+Repository: https://github.com/vincebosps4-pixel/global-gaming-bot

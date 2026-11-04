@@ -1,0 +1,15 @@
+.env
+.git
+.venv
+__pycache__
+tests
+data
+logs
+config
+runtime
+releases
+staging
+*.sqlite3*
+*.log
+*.token
+*.zip
