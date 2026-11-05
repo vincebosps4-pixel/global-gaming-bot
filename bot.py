@@ -47,6 +47,12 @@ CHANNELS = {
     "roblox-chat": 1567600615750770819,
 }
 GUILD = discord.Object(id=GUILD_ID)
+PROMOTION_GUILD = 1567599947279376416
+BUMP_NAME = "🚀・bump-commands"
+POST_PERMISSIONS = ("send_messages", "send_messages_in_threads")
+# Integrations without a managed role still have their public bot ID.
+DIRECTORY_APPS = (1490632864729927800, 493224032167002123, 835255643157168168,
+                  709355879266385921, 1542211794347491338, 422087909634736160, 1541520349726908457)
 NO_MENTIONS = discord.AllowedMentions.none()
 CARD_BACKGROUND = "#000000"
 
@@ -510,6 +516,89 @@ def is_manager(interaction: discord.Interaction) -> bool:
     return interaction.guild_id == GUILD_ID and interaction.permissions.manage_guild
 
 
+def can_promote(channel, member):
+    access = channel.permissions_for(member)
+    return access.view_channel and any(getattr(access, bit) for bit in POST_PERMISSIONS)
+
+
+async def deny_promotion_posts(channel, target):
+    overwrite = channel.overwrites_for(target)
+    if all(getattr(overwrite, bit) is False for bit in POST_PERMISSIONS):
+        return
+    overwrite.update(**dict.fromkeys(POST_PERMISSIONS, False))
+    await channel.set_permissions(target, overwrite=overwrite, reason="Global Gaming: promotion posts belong in bump-commands")
+
+
+async def enforce_promotion_channels(guild):
+    if guild is None or guild.id != PROMOTION_GUILD:
+        raise ValueError("Global Gaming is unavailable.")
+    roles = [r for r in guild.roles if r.name == "Promotion Bots" and not r.managed]
+    if len(roles) != 1:
+        raise ValueError("Expected one Promotion Bots role.")
+    role = roles[0]
+    channels = await guild.fetch_channels()
+    matches = [c for c in channels if isinstance(c, discord.TextChannel) and c.name == BUMP_NAME]
+    if len(matches) != 1:
+        raise ValueError("Expected one private bump-commands text channel.")
+    bump = matches[0]
+    bump_id = bump.id
+    if bump.overwrites_for(role).view_channel is not True or bump.overwrites_for(guild.default_role).view_channel is not False:
+        raise ValueError("Check the Promotion Bots role on the private bump channel.")
+    bot_ids = {r.tags.bot_id for r in guild.roles if r.tags and r.tags.bot_id}
+    members = []
+    for bot_id in sorted(bot_ids.union(DIRECTORY_APPS) - {guild.me.id}):
+        try:
+            member = await guild.fetch_member(bot_id)
+        except discord.NotFound:
+            continue
+        if member.bot and role in member.roles:
+            members.append(member)
+    counts = await guild.role_member_counts()
+    if not members or counts.get(role) != len(members):
+        raise ValueError("The Promotion Bots role has unverified members. Check its members before applying limits.")
+    categories = {c.id: c for c in channels if isinstance(c, discord.CategoryChannel)}
+    # Decide sync from the same Discord snapshot, before changing a parent.
+    targets = []
+    for channel in channels:
+        if channel.id in (bump_id, bump.category_id):
+            continue
+        parent = categories.get(channel.category_id)
+        if parent and parent.id != bump.category_id and parent.overwrites == channel.overwrites:
+            continue
+        if any(can_promote(channel, member) for member in members):
+            targets.append(channel)
+    for channel in targets:
+        if channel.permissions_for(guild.me).manage_roles:
+            try:
+                await deny_promotion_posts(channel, role)
+            except discord.Forbidden:
+                LOG.info("Discord denied the promotion role overwrite on %s", channel.id)
+    # Explicit allows from other roles / members win over a role denial. Address only actual exceptions.
+    channels = await guild.fetch_channels()
+    for channel in channels:
+        if channel.id == bump_id or isinstance(channel, discord.CategoryChannel) or not channel.permissions_for(guild.me).manage_roles:
+            continue
+        for member in members:
+            if not member.guild_permissions.administrator and can_promote(channel, member):
+                try:
+                    await deny_promotion_posts(channel, member)
+                except discord.Forbidden:
+                    break
+    # A successful write is not a verification. Read back and resolve real member permissions.
+    final = await guild.fetch_channels()
+    leaks = [c for c in final if c.id != bump_id and not isinstance(c, discord.CategoryChannel)
+             and any(can_promote(c, member) for member in members)]
+    bump = discord.utils.get(final, id=bump_id)
+    missing = [m.display_name for m in members if not bump or not (
+        bump.permissions_for(m).view_channel and bump.permissions_for(m).send_messages)]
+    result = f"Checked {len(members)} promotion bots. Channels outside bump-commands where they can still post: {len(leaks)}."
+    if leaks:
+        result += " Check my Manage Roles permission or a bot's Administrator permission in: " + ", ".join(c.mention for c in leaks[:12])
+    if missing:
+        result += " Missing send access in bump-commands: " + ", ".join(missing)
+    return result
+
+
 async def upsert_embed(channel, bot_id: int, embed: discord.Embed) -> str:
     """Recover the existing bot message from Discord, even after a host restart.
 
@@ -537,6 +626,10 @@ class LoungeBot(discord.Client):
         self.tree = app_commands.CommandTree(self)
         self.publish_lock = asyncio.Lock()
         self.initial_setup_attempted = False
+        self.promotion_lock = asyncio.Lock()
+        self.promotion_status = "Waiting for the first check."
+        self.promotion_task = None
+        self.promotion_dirty = False
         self.community = None
         self.instance_lock = None
         self.welcome_slots = asyncio.Semaphore(2)
@@ -583,6 +676,29 @@ class LoungeBot(discord.Client):
                     result.append(f"#{name}: NOT published ({detail})")
             return "\n".join(result)
 
+    async def check_promotions(self, guild):
+        async with self.promotion_lock:
+            try:
+                self.promotion_status = await enforce_promotion_channels(guild)
+            except (discord.HTTPException, ValueError) as exc:
+                self.promotion_status = f"Could not verify the channel restrictions: {exc}"
+            LOG.info("%s", self.promotion_status)
+            return self.promotion_status
+
+    def schedule_promotion_check(self, guild):
+        self.promotion_dirty = True
+        async def run():
+            while self.promotion_dirty:
+                await asyncio.sleep(2)
+                self.promotion_dirty = False
+                await self.check_promotions(guild)
+        if self.promotion_task is None or self.promotion_task.done():
+            self.promotion_task = asyncio.create_task(run())
+
+    async def on_guild_channel_create(self, channel):
+        if channel.guild.id == PROMOTION_GUILD:
+            self.schedule_promotion_check(channel.guild)
+
     async def on_ready(self):
         LOG.info("Connected as %s", self.user)
         if not self.initial_setup_attempted:
@@ -590,6 +706,8 @@ class LoungeBot(discord.Client):
             once = os.getenv("PUBLISH_ONCE", "false").lower() == "true"
             try:
                 if getattr(self, 'community', None) is not None:
+                    if not once and GUILD_ID == PROMOTION_GUILD:
+                        self.schedule_promotion_check(self.get_guild(GUILD_ID))
                     await self.community.recover_tickets(self.get_guild(GUILD_ID))
                     if os.getenv("AUTO_SETUP", "true").lower() == "true":
                         try:
@@ -871,6 +989,16 @@ async def welcome_preview(interaction: discord.Interaction):
         payload["file"].close()
 
 
+@bot.tree.command(name="promotion_check", description="Owner only: apply and verify the posting restrictions for Promotion Bots.", guild=GUILD)
+@app_commands.guild_only()
+@app_commands.default_permissions(manage_guild=True)
+async def promotion_check(interaction: discord.Interaction):
+    if interaction.guild_id != PROMOTION_GUILD or interaction.user.id != interaction.guild.owner_id:
+        return await interaction.response.send_message("Only the Global Gaming owner can run this check.", ephemeral=True)
+    await interaction.response.defer(ephemeral=True)
+    await interaction.followup.send(await bot.check_promotions(interaction.guild), ephemeral=True, allowed_mentions=NO_MENTIONS)
+
+
 @bot.tree.command(name="bot_status", description="Check community features and channel permissions.", guild=GUILD)
 @app_commands.guild_only()
 @app_commands.default_permissions(manage_guild=True)
@@ -878,6 +1006,7 @@ async def welcome_preview(interaction: discord.Interaction):
 async def bot_status(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     lines = ["Global Gaming Lounge community bot is online."]
+    lines.append("Promotion Bots: " + bot.promotion_status)
     lines.append("Personal welcome cards: enabled (new human members while online)")
     welcome_channel = interaction.guild.get_channel(CHANNELS["welcome"])
     if welcome_channel:

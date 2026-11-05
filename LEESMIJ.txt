@@ -1,5 +1,11 @@
 GLOBAL GAMING — COMMUNITYBOT
 
+Versie 1.0.9 beperkt gewone berichten en berichten in threads van de rol
+Promotion Bots tot 🚀・bump-commands op Global Gaming. Bij het opstarten en
+na het maken van een kanaal controleert de bot de effectieve kanaalrechten.
+De eigenaar kan /promotion_check gebruiken om de controle te herhalen.
+/bot_status toont de laatst gecontroleerde uitkomst.
+
 Versie 1.0.8 voegt een introductie toe aan memes-and-clips en de chats voor
 Fortnite, Minecraft, Rocket League en Roblox. Bij het starten plaatst de bot
 deze embeds. Gebruik /setup_embeds om de plaatsing per kanaal te controleren.

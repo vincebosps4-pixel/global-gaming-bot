@@ -325,5 +325,50 @@ class PlayerPassTests(unittest.IsolatedAsyncioTestCase):
         p.stop()
 
 
+class PromotionAccessTests(unittest.IsolatedAsyncioTestCase):
+    async def test_only_target_bots_blocked_outside_private_channel_and_read_back(self):
+        from unittest.mock import Mock
+        from bot import BUMP_NAME, enforce_promotion_channels
+        from bot import DIRECTORY_APPS
+        role = Mock(name="promotion-role", managed=False, tags=None)
+        role.name = "Promotion Bots"
+        everyone, me = Mock(), Mock(id=99)
+        member = Mock(id=10, bot=True, roles=[role], guild_permissions=discord.Permissions.none())
+        async def fetch_member(bot_id):
+            return member if bot_id == DIRECTORY_APPS[0] else SimpleNamespace(bot=True, roles=[])
+        guild = SimpleNamespace(id=GUILD_ID, me=me, default_role=everyone, roles=[role], fetch_member=fetch_member,
+                                role_member_counts=AsyncMock(return_value={role: 1}))
+        bump = Mock(spec=discord.TextChannel, id=42, category_id=None)
+        bump.name = BUMP_NAME
+        bump.overwrites_for.side_effect = lambda target: discord.PermissionOverwrite(view_channel=target is role)
+        bump.permissions_for.return_value = discord.Permissions(view_channel=True, send_messages=True)
+        general = Mock(spec=discord.TextChannel, id=43, category_id=None)
+        permissions = {role: discord.PermissionOverwrite(create_instant_invite=True),
+                       member: discord.PermissionOverwrite(send_messages=True, view_channel=True)}
+        general.overwrites_for.side_effect = lambda target: discord.PermissionOverwrite.from_pair(*permissions[target].pair())
+        def access(target):
+            if target is me:
+                return discord.Permissions(manage_roles=True, view_channel=True)
+            return discord.Permissions(view_channel=True, send_messages=permissions[member].send_messages is not False,
+                send_messages_in_threads=permissions[role].send_messages_in_threads is not False)
+        general.permissions_for.side_effect = access
+        async def change(target, *, overwrite, reason):
+            permissions[target] = overwrite
+        general.set_permissions = AsyncMock(side_effect=change)
+        guild.fetch_channels = AsyncMock(return_value=[bump, general])
+        result = await enforce_promotion_channels(guild)
+        self.assertIn("still post: 0", result)
+        self.assertEqual([call.args[0] for call in general.set_permissions.await_args_list], [role, member])
+        bump.set_permissions.assert_not_called()
+        self.assertTrue(permissions[role].create_instant_invite)
+        self.assertTrue(permissions[member].view_channel)
+        await enforce_promotion_channels(guild)
+        self.assertEqual(general.set_permissions.await_count, 2)
+        guild.role_member_counts.return_value = {role: 2}
+        with self.assertRaisesRegex(ValueError, "unverified members"):
+            await enforce_promotion_channels(guild)
+        self.assertEqual(general.set_permissions.await_count, 2)
+
+
 if __name__ == "__main__":
     unittest.main()
