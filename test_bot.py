@@ -131,8 +131,13 @@ class TemplatesTest(unittest.TestCase):
     def test_embeds_fit_discord_limits(self):
         templates = template_embeds()
         self.assertEqual(set(templates), set(CHANNELS))
-        self.assertEqual(len(templates), 19)
-        self.assertEqual([e.colour.value for e in templates.values()], ([0x00BFFF, 0xFF2D95] * 10)[:19])
+        self.assertEqual(len(templates), 24)
+        self.assertEqual([e.colour.value for e in templates.values()], [0x00BFFF, 0xFF2D95] * 12)
+        for chat, group in (("fortnite-chat", "fortnite-looking-for-group"),
+                            ("minecraft-chat", "minecraft-builds-and-lfg"),
+                            ("rocket-league-chat", "rocket-league-looking-for-team"),
+                            ("roblox-chat", "roblox-games-and-lfg"), ("memes-and-clips", "media")):
+            self.assertIn(f"<#{CHANNELS[group]}>", templates[chat].description)
         for embed in templates.values():
             self.assertLessEqual(len(embed), 6000)
             self.assertLessEqual(len(embed.title), 256)

@@ -40,6 +40,11 @@ CHANNELS = {
     "media": 1567624652367335475,
     "among-us-chat": 1567672562769600634,
     "among-us-looking-for-group": 1567672572743655525,
+    "memes-and-clips": 1567600290235031613,
+    "fortnite-chat": 1567600414130569216,
+    "minecraft-chat": 1567600509790191759,
+    "rocket-league-chat": 1567600562604744714,
+    "roblox-chat": 1567600615750770819,
 }
 GUILD = discord.Object(id=GUILD_ID)
 NO_MENTIONS = discord.AllowedMentions.none()
@@ -48,8 +53,9 @@ CARD_BACKGROUND = "#000000"
 # Only known public community rooms and role-selected game rooms; never ticket or staff channels.
 SOCIAL_CHANNELS = frozenset({
     CHANNELS["general"], CHANNELS["international-chat"], CHANNELS["introductions"], CHANNELS["media"],
-    1567600290235031613, 1567600414130569216, 1567600509790191759, 1567600562604744714,
-    1567600615750770819, CHANNELS["cod-chat"], CHANNELS["gta-vi-chat"], CHANNELS["among-us-chat"],
+    CHANNELS["memes-and-clips"], CHANNELS["fortnite-chat"], CHANNELS["minecraft-chat"],
+    CHANNELS["rocket-league-chat"], CHANNELS["roblox-chat"],
+    CHANNELS["cod-chat"], CHANNELS["gta-vi-chat"], CHANNELS["among-us-chat"],
     *(channel for name, channel in CHANNELS.items() if "looking-for-" in name or "lfg" in name),
 })
 GAME_NAMES = ("Fortnite", "Minecraft", "Rocket League", "Roblox", "Call of Duty", "GTA VI", "Among Us", "Other Games")
@@ -457,6 +463,30 @@ def template_embeds() -> dict[str, discord.Embed]:
         "server-boosts": boosts, "giveaways": giveaways, "media": media,
         "among-us-chat": among_chat, "among-us-looking-for-group": among_lfg,
     }
+    # Append new rooms so existing welcome cards keep their blue/pink colours.
+    result["memes-and-clips"] = discord.Embed(
+        title="😂 What just happened?",
+        description=(
+            "Drop the clip of that last-second save, your perfectly timed fail, or a gaming meme "
+            "your squad will recognise. Add the game name so everyone can follow along.\n\n"
+            f"Sharing a build, artwork or a photo collection? Try <#{CHANNELS['media']}>. "
+            "Credit the creator and ask before sharing someone else's voice or face."
+        ),
+    )
+    game_chats = (
+        ("fortnite-chat", "🎯 Fortnite chat", "Build or Zero Build? Share a drop spot, compare loadouts or ask how someone pulled off a play.",
+         "fortnite-looking-for-group", "Looking for a duo or squad? Share your region and mode"),
+        ("minecraft-chat", "⛏️ Minecraft chat", "Show us what you're building, swap redstone ideas or ask for survival tips. Mention Java or Bedrock when it matters.",
+         "minecraft-builds-and-lfg", "Planning a build together? Tell people your edition and when you play"),
+        ("rocket-league-chat", "🚗 Rocket League chat", "Talk rotations, share a training pack or ask for a second look at a replay. Casual and ranked players are both welcome.",
+         "rocket-league-looking-for-team", "Need a teammate? Post your region, playlist and rank"),
+        ("roblox-chat", "🧱 Roblox chat", "Which experience is worth playing with friends? Tell us its name and what you liked, or show us something you made in Studio.",
+         "roblox-games-and-lfg", "Starting a group? Share the experience and the number of open spots"),
+    )
+    for key, title, discussion, group_key, invitation in game_chats:
+        result[key] = discord.Embed(
+            title=title, description=f"{discussion}\n\n{invitation} in <#{CHANNELS[group_key]}>."
+        )
     for index, (key, embed) in enumerate(result.items()):
         embed.colour = discord.Colour(0x00BFFF if index % 2 == 0 else 0xFF2D95)
         embed.set_footer(text=f"Global Gaming Lounge • {key} • All languages. All skill levels.")

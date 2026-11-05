@@ -1,7 +1,8 @@
 GLOBAL GAMING — COMMUNITYBOT
 
-Versie 1.0.7: open 🎫・open-ticket en kies Apply for Creator. De eigenaar
-controleert het account voordat de bot Content Creators en de platformrol geeft.
+Versie 1.0.8 voegt een introductie toe aan memes-and-clips en de chats voor
+Fortnite, Minecraft, Rocket League en Roblox. Bij het starten plaatst de bot
+deze embeds. Gebruik /setup_embeds om de plaatsing per kanaal te controleren.
 Bestaande Windows-installaties ontvangen deze botversie via automatische updates.
 De Windows-systeeminstallatie voor nieuwe hosts staat bij release v1.0.6.
 
