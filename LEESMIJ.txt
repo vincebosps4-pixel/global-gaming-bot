@@ -1,5 +1,10 @@
 GLOBAL GAMING — COMMUNITYBOT
 
+Versie 1.0.11 controleert bij het starten en daarna elke 15 minuten op nieuwe
+botversies. Gebruik op een bestaande 24/7-pc met de taak Global Gaming Bot -
+Systeem eenmalig KWARTIERCONTROLE.cmd uit het kwartierpakket als administrator.
+De vaste Windows-timer wordt alleen op de host bijgewerkt.
+
 Versie 1.0.10 geeft menselijke leden de witte Member-rol op Global Gaming.
 De bot kent deze rol toe bij binnenkomst en haalt gemiste toewijzingen bij
 het starten en elke tien minuten in. Leden met openstaande Discord-screening

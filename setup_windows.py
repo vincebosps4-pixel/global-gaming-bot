@@ -31,7 +31,7 @@ def setup():
     if os.name!='nt' or sys.version_info<(3,12):
         raise SystemExit('Gebruik Windows met Python 3.12 of nieuwer: https://www.python.org/downloads/windows/')
     print('GLOBAL GAMING — installatie op deze 24/7-pc')
-    print('De bot start na Windows-aanmelding en controleert elke 30 minuten op gepubliceerde GitHub-updates.')
+    print('De bot start na Windows-aanmelding en controleert elke 15 minuten op gepubliceerde GitHub-updates.')
     print('Laat deze pc ingeschakeld, verbonden met internet en aangemeld. Het scherm mag vergrendeld zijn.')
     config=ROOT/'config'
     config.mkdir(exist_ok=True)

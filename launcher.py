@@ -22,6 +22,7 @@ from instance_lock import InstanceLock
 REPO='vincebosps4-pixel/global-gaming-bot'
 ROOT=Path(__file__).resolve().parent
 MAX_ZIP=8*1024*1024
+UPDATE_INTERVAL_SECONDS = 15 * 60
 ALLOWED={'bot.py','community.py','storage.py','instance_lock.py','launcher.py','setup_windows.py',
          'requirements.txt','VERSION','README.md','LEESMIJ.txt','.env.example','.gitignore','.dockerignore',
          'Dockerfile','START-HIER.cmd','START-BOT.cmd','STOP-BOT.cmd','STATUS.cmd',
@@ -198,11 +199,12 @@ class Supervisor:
         try:
             self.bootstrap()
             self.start()
-            check_at=0
+            check_at = time.monotonic()
             while not (self.data/'supervisor.stop').exists():
                 now=time.time()
-                if now>=check_at:
-                    check_at=now+1800
+                elapsed = time.monotonic()
+                if elapsed >= check_at:
+                    check_at = elapsed + UPDATE_INTERVAL_SECONDS
                     if not (self.root/'config'/'PAUSE-UPDATES').exists():
                         try:
                             update=self.latest()

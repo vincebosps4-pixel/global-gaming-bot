@@ -58,7 +58,9 @@ Ticketinhoud blijft in Discord. Ticketmetadata, giveawayteksten, deelnemers-ID's
 
 ## Automatische updates
 
-Elke 30 minuten controleert de supervisor uitsluitend stabiele releases van **vincebosps4-pixel/global-gaming-bot**. Hij controleert downloadlocatie, checksum en toegestane bestanden, installeert elke versie apart en voert de tests uit terwijl de bestaande bot blijft draaien. Daarna herstart hij de bot. Werkt de nieuwe versie niet, dan valt hij terug op de vorige. Lokale sleutels en data worden niet door een release overschreven.
+Bij de start en daarna elke 15 minuten zoekt de supervisor naar stabiele releases van **vincebosps4-pixel/global-gaming-bot**. Hij controleert downloadlocatie, checksum en toegestane bestanden, installeert elke versie apart en voert de tests uit terwijl de bestaande bot blijft draaien. Daarna herstart hij de bot. Werkt de nieuwe versie niet, dan valt hij terug op de vorige. Lokale sleutels en data worden niet door een release overschreven.
+
+**Bestaande Windows-systeeminstallatie (v1.0.6).** De timer staat in het vaste startprogramma op de 24/7-pc. Pak het kwartierpakket of de [broncode van v1.0.11](https://github.com/vincebosps4-pixel/global-gaming-bot/archive/refs/tags/v1.0.11.zip) uit. Klik op die pc met rechts op `KWARTIERCONTROLE.cmd` en kies **Als administrator uitvoeren**. Het programma controleert de bestaande installatie, past de timer aan en herstart een draaiende bot. Een gestopte bot gebruikt de nieuwe timer bij de volgende start. Een bestaande updatepauze blijft van kracht.
 
 Updates ontstaan wanneer we code publiceren met een hoger nummer in `VERSION`. De bot schrijft geen eigen wijzigingen. De GitHub-workflow test op Windows en Linux voordat hij een release publiceert; er is geen Discord-sleutel nodig op GitHub. De vaste Windows-startomgeving is gescheiden van bijgewerkte botcode; een wijziging daarvan kan een nieuwe handmatige installatie vereisen.
 

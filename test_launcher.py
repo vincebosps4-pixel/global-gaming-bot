@@ -25,6 +25,30 @@ def archive(extra=None):
 
 
 class UpdateTests(unittest.TestCase):
+    def test_checks_at_start_and_each_quarter_hour(self):
+        with tempfile.TemporaryDirectory() as temp:
+            supervisor = Supervisor(temp)
+            supervisor.bootstrap = Mock()
+            supervisor.start = Mock()
+            supervisor.stop = Mock()
+            supervisor.process = Mock()
+            supervisor.process.poll.return_value = None
+            supervisor.started = 5000
+            elapsed = 0
+            checks = []
+
+            def sleep(seconds):
+                nonlocal elapsed
+                elapsed += seconds
+                if elapsed > 1800:
+                    (supervisor.data / 'supervisor.stop').touch()
+
+            supervisor.latest = Mock(side_effect=lambda: checks.append(elapsed))
+            with patch('launcher.time.monotonic', side_effect=lambda: elapsed), \
+                 patch('launcher.time.time', return_value=5000), patch('launcher.time.sleep', sleep):
+                supervisor.run()
+            self.assertEqual(checks, [0, 900, 1800])
+
     def test_valid_package_and_version(self):
         raw,digest=archive()
         self.assertIn('bot.py',checked_files(raw,digest,'1.0.0'))
