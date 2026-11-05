@@ -1,13 +1,14 @@
 import asyncio
 import tempfile
 import unittest
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import discord
 
-from community import CommunityFeatures, GiveawayEntry, GiveawayPreview, TicketControls, TicketPanel, giveaway_embed, ticket_overwrites
+from community import CommunityFeatures, CreatorControls, CREATOR_PLATFORMS, CreatorDesk, creator_application_input, creator_embed, GiveawayEntry, GiveawayPreview, TicketControls, TicketPanel, giveaway_embed, ticket_overwrites
 from storage import Store
 
 
@@ -139,7 +140,7 @@ class FeatureTests(unittest.IsolatedAsyncioTestCase):
         self.tmp.cleanup()
 
     async def test_persistent_buttons_and_commands_register(self):
-        for view in (TicketPanel(self.f),TicketControls(self.f),GiveawayEntry(self.f)):
+        for view in (TicketPanel(self.f),TicketControls(self.f),GiveawayEntry(self.f),CreatorControls(self.f.creators)):
             self.assertTrue(view.is_persistent())
         self.f.register()
         commands=self.bot.tree.get_commands(guild=discord.Object(id=42))
@@ -189,6 +190,113 @@ class FeatureTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(message.edit.await_count,2)
         self.assertEqual(self.f.store.giveaway(gid)['winners'],'[7]')
         self.assertEqual(self.f.store.giveaway(gid)['published'],1)
+
+
+class CreatorTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory()
+        self.store=Store(Path(self.tmp.name)/'creator.sqlite3')
+        self.desk=CreatorDesk(SimpleNamespace(guild_id=45,store=self.store))
+        self.row=self.store.new_creator(23,'Twitch','CreW_23',1250)
+        self.store.creator_location(self.row['id'],256,257)
+        self.member=SimpleNamespace(add_roles=AsyncMock())
+        self.guild=SimpleNamespace(owner_id=100,fetch_member=AsyncMock(return_value=self.member))
+        self.i=SimpleNamespace(user=SimpleNamespace(id=100),guild=self.guild,guild_id=45,channel_id=256,
+                               channel=SimpleNamespace(id=256),message=SimpleNamespace(id=257),
+                               response=SimpleNamespace(send_message=AsyncMock()))
+        self.desk.roles=Mock(return_value=['platform-role','group-role'])
+        self.desk.put_card=AsyncMock()
+
+    def tearDown(self):
+        self.store.close()
+        self.tmp.cleanup()
+
+    async def accept(self):
+        return await self.desk.approve(self.i,self.row['id'],self.row['keyword'])
+
+    async def test_only_server_owner_in_original_channel_can_grant(self):
+        self.i.user.id=23
+        with self.assertRaises(ValueError): await self.accept()
+        await self.desk.action(self.i,'review')
+        self.i.response.send_message.assert_awaited_once()
+        self.i.user.id=100
+        self.i.channel_id=1
+        with self.assertRaises(ValueError): await self.accept()
+        self.member.add_roles.assert_not_awaited()
+
+    async def test_new_or_expired_word_cannot_be_used_for_approval(self):
+        self.store.db.execute('UPDATE creator_requests SET expires=?',(int(time.time())-1,))
+        with self.assertRaisesRegex(ValueError,'expired'): await self.accept()
+        self.store.renew_creator(self.row['id'])
+        with self.assertRaisesRegex(ValueError,'stale'): await self.accept()
+        self.member.add_roles.assert_not_awaited()
+
+    async def test_verified_request_survives_partial_failure_and_blocks_second_claim(self):
+        self.member.add_roles.side_effect=OSError('interrupted')
+        with self.assertRaises(OSError): await self.accept()
+        self.assertEqual(self.store.creator_request(self.row['id'])['state'],'approving')
+        self.member.add_roles.side_effect=None
+        await self.accept()
+        self.assertEqual(self.store.creator_request(self.row['id'])['state'],'approved')
+        await self.accept()
+        self.assertEqual(self.member.add_roles.await_count,2)
+        other=self.store.new_creator(24,'Twitch','CREW_23',300)
+        self.store.creator_location(other['id'],300,301)
+        self.i.channel_id=300
+        with self.assertRaisesRegex(ValueError,'already attached'):
+            await self.desk.approve(self.i,other['id'],other['keyword'])
+        self.assertEqual(self.member.add_roles.await_count,2)
+
+    async def test_creator_acl_and_platform_input(self):
+        bot=Mock(guild_permissions=discord.Permissions.all())
+        everyone,applicant=object(),object()
+        acl=ticket_overwrites(SimpleNamespace(default_role=everyone),None,bot,applicant)
+        self.assertEqual(set(acl),{everyone,bot,applicant})
+        self.assertFalse(acl[everyone].view_channel)
+        self.assertEqual(creator_application_input(' @CreW_23 ','0001250'),('CreW_23',1250))
+        for handle,count in [('https://not-a-profile','5'),('abc','1.1k'),('@everyone here','100')]:
+            with self.assertRaises(ValueError): creator_application_input(handle,count)
+        card=creator_embed(self.row,100)
+        fields=' '.join(f.value for f in card.fields)
+        self.assertIn('https://www.twitch.tv/CreW_23',fields)
+        self.assertIn(self.row['keyword'],fields)
+
+    async def test_creator_application_reuses_ticket_and_preserves_claimed_account(self):
+        desk=self.desk
+        user=Mock(id=29,bot=False,roles=[])
+        everyone=Mock(id=45)
+        me=Mock(id=61,guild_permissions=discord.Permissions.all())
+        channel=Mock(id=259,mention='<#259>')
+        guild=SimpleNamespace(owner_id=100,me=me,default_role=everyone,fetch_channels=AsyncMock(return_value=[]),
+                             create_text_channel=AsyncMock(return_value=channel))
+        i=SimpleNamespace(guild_id=45,channel_id=1567624646944235632,user=user,guild=guild)
+        desk.f.ticket_category=AsyncMock(return_value=object())
+        desk.f.channel=AsyncMock(return_value=channel)
+        await desk.apply(i,'TikTok','actual_account',20)
+        await desk.apply(i,'Instagram','different',500)
+        self.assertEqual(guild.create_text_channel.await_count,1)
+        self.assertEqual(set(guild.create_text_channel.await_args.kwargs['overwrites']),{everyone,me,user})
+        saved=self.store.pending_creator(29)
+        self.assertEqual((saved['platform'],saved['handle'],saved['followers'],saved['channel']),
+                         ('TikTok','actual_account',20,259))
+
+    async def test_rejects_unassignable_privileged_or_replaced_roles(self):
+        def fake(rid,name,hoist):
+            role=Mock(managed=False,mentionable=False,hoist=hoist,permissions=discord.Permissions.none())
+            role.id,role.name=rid,name
+            role.is_default.return_value=False
+            role.is_assignable.return_value=True
+            return role
+        platform=fake(4,CREATOR_PLATFORMS['Twitch'][0],False)
+        group=fake(5,'🎬 Content Creators',True)
+        guild=SimpleNamespace(roles=[platform,group],channels=[])
+        resolve=CreatorDesk.roles
+        self.assertEqual(resolve(self.desk,guild,'Twitch'),[platform,group])
+        group.permissions=discord.Permissions(manage_messages=True)
+        with self.assertRaises(ValueError): resolve(self.desk,guild,'Twitch')
+        group.permissions=discord.Permissions.none()
+        group.id=6
+        with self.assertRaises(ValueError): resolve(self.desk,guild,'Twitch')
 
 
 if __name__=='__main__':

@@ -36,6 +36,15 @@ class Store:
             CREATE TABLE IF NOT EXISTS welcomes(
                 member INTEGER PRIMARY KEY, joined TEXT NOT NULL,
                 message INTEGER, created INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS creator_requests(
+                id INTEGER PRIMARY KEY, member INTEGER NOT NULL, platform TEXT NOT NULL,
+                handle TEXT NOT NULL, normalized TEXT NOT NULL, followers INTEGER NOT NULL,
+                keyword TEXT NOT NULL UNIQUE, expires INTEGER NOT NULL, state TEXT NOT NULL DEFAULT 'pending',
+                channel INTEGER UNIQUE, message INTEGER, reviewer INTEGER);
+            CREATE UNIQUE INDEX IF NOT EXISTS creator_pending ON creator_requests(member)
+                WHERE state IN ('pending','approving');
+            CREATE UNIQUE INDEX IF NOT EXISTS creator_verified_handle ON creator_requests(platform, normalized)
+                WHERE state IN ('approving','approved');
             CREATE TABLE IF NOT EXISTS gamer_profiles(
                 member INTEGER PRIMARY KEY, fields INTEGER NOT NULL DEFAULT 31,
                 tracking INTEGER NOT NULL DEFAULT 0, xp INTEGER NOT NULL DEFAULT 0,
@@ -70,6 +79,40 @@ class Store:
 
     def close(self):
         self.db.close()
+
+    def creator_request(self, rid):
+        return self.db.execute("SELECT * FROM creator_requests WHERE id=?", (rid,)).fetchone()
+
+    def pending_creator(self, member):
+        return self.db.execute("SELECT * FROM creator_requests WHERE member=? AND state IN ('pending','approving')", (member,)).fetchone()
+
+    def creator_for_channel(self, channel):
+        return self.db.execute("SELECT * FROM creator_requests WHERE channel=?", (channel,)).fetchone()
+
+    @staticmethod
+    def creator_challenge():
+        return "GG-CREATOR-" + secrets.token_hex(5).upper(), int(time.time()) + 86400
+
+    def new_creator(self, member, platform, handle, followers):
+        with self.db:
+            rid = self.db.execute("""INSERT INTO creator_requests
+                (member,platform,handle,normalized,followers,keyword,expires) VALUES(?,?,?,?,?,?,?)""",
+                (member,platform,handle,handle.casefold(),followers,*self.creator_challenge())).lastrowid
+        return self.creator_request(rid)
+
+    def creator_location(self, rid, channel, message=None):
+        with self.db:
+            self.db.execute("UPDATE creator_requests SET channel=?,message=? WHERE id=?", (channel,message,rid))
+
+    def renew_creator(self, rid):
+        with self.db:
+            self.db.execute("UPDATE creator_requests SET keyword=?,expires=? WHERE id=? AND state='pending'",
+                            (*self.creator_challenge(),rid))
+
+    def creator_decision(self, rid, before, after, reviewer):
+        with self.db:
+            return self.db.execute("UPDATE creator_requests SET state=?,reviewer=? WHERE id=? AND state=?",
+                                   (after,reviewer,rid,before)).rowcount == 1
 
     def get(self, key: str, default=None):
         row = self.db.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()

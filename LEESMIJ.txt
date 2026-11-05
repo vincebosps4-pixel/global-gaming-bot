@@ -1,5 +1,10 @@
 GLOBAL GAMING — COMMUNITYBOT
 
+Versie 1.0.7: open 🎫・open-ticket en kies Apply for Creator. De eigenaar
+controleert het account voordat de bot Content Creators en de platformrol geeft.
+Bestaande Windows-installaties ontvangen deze botversie via automatische updates.
+De Windows-systeeminstallatie voor nieuwe hosts staat bij release v1.0.6.
+
 Pak de volledige zip uit op je Windows-pc die 24/7 aan blijft.
 Installeer Python 3.12 of nieuwer, inclusief Python Launcher:
 https://www.python.org/downloads/windows/
