@@ -14,6 +14,7 @@ from pathlib import Path
 
 import discord
 from discord import app_commands
+from discord.ext import tasks
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent
@@ -48,6 +49,7 @@ CHANNELS = {
 }
 GUILD = discord.Object(id=GUILD_ID)
 PROMOTION_GUILD = 1567599947279376416
+MEMBER_ROLE_ID = 1567777602046001303
 BUMP_NAME = "🚀・bump-commands"
 POST_PERMISSIONS = ("send_messages", "send_messages_in_threads")
 # Integrations without a managed role still have their public bot ID.
@@ -645,6 +647,52 @@ class LoungeBot(discord.Client):
         self.community = CommunityFeatures(self, GUILD_ID, data_dir)
         self.community.register()
         await self.tree.sync(guild=GUILD)
+        if GUILD_ID == PROMOTION_GUILD and os.getenv("PUBLISH_ONCE", "false").lower() != "true":
+            self.sync_member_roles.start()
+
+    @staticmethod
+    def member_badge(guild):
+        role = guild.get_role(MEMBER_ROLE_ID)
+        if (role is None or role.guild.id != PROMOTION_GUILD or not role.is_assignable()
+                or role.permissions.value or not guild.me.guild_permissions.manage_roles):
+            raise ValueError("Check the Member role, bot hierarchy and Manage Roles permission.")
+        if any(channel.overwrites_for(role).pair()[0].value for channel in guild.channels):
+            raise ValueError("The Member badge has channel access overrides. Check before assigning it to everyone.")
+        return role
+
+    @staticmethod
+    async def give_member_badge(member, role):
+        if member.bot or member.pending or role in member.roles:
+            return
+        await member.add_roles(role, reason="Global Gaming membership", atomic=True)
+
+    async def give_join_badge(self, member):
+        if (member.bot or member.pending or member.guild.id != PROMOTION_GUILD or GUILD_ID != PROMOTION_GUILD
+                or os.getenv("PUBLISH_ONCE", "false").lower() == "true"):
+            return
+        try:
+            await self.give_member_badge(member, self.member_badge(member.guild))
+        except (ValueError, discord.HTTPException) as exc:
+            LOG.warning("Member role pending: %s", str(exc) if isinstance(exc, ValueError) else type(exc).__name__)
+
+    @tasks.loop(minutes=10)
+    async def sync_member_roles(self):
+        await self.wait_until_ready()
+        guild = self.get_guild(PROMOTION_GUILD)
+        if guild is None or guild.unavailable:
+            return
+        try:
+            role = self.member_badge(guild)
+            async for member in guild.fetch_members(limit=None):
+                try:
+                    await self.give_member_badge(member, role)
+                except discord.NotFound as exc:
+                    if exc.code != 10007:  # A member can leave during enumeration.
+                        raise
+                except discord.Forbidden:
+                    LOG.warning("Discord refused the Member role for a member; retrying at the next check.")
+        except (ValueError, discord.HTTPException) as exc:
+            LOG.warning("Member role check pending: %s", str(exc) if isinstance(exc, ValueError) else type(exc).__name__)
 
     async def destination(self, name: str) -> discord.TextChannel:
         channel = self.get_channel(CHANNELS[name]) or await self.fetch_channel(CHANNELS[name])
@@ -730,7 +778,11 @@ class LoungeBot(discord.Client):
             await self.community.boost_message(message)
 
     async def on_member_join(self, member):
-        await self.send_member_welcome(member)
+        await asyncio.gather(self.give_join_badge(member), self.send_member_welcome(member))
+
+    async def on_member_update(self, before, after):
+        if before.pending and not after.pending:
+            await self.give_join_badge(after)
 
     async def send_member_welcome(self, member):
         """Deliver once per join, including a manager's explicit request following an outage."""
@@ -767,6 +819,7 @@ class LoungeBot(discord.Client):
                     payload["file"].close()
 
     async def close(self):
+        self.sync_member_roles.cancel()
         if self.community is not None:
             community, self.community = self.community, None
             await community.shutdown()

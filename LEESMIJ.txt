@@ -1,5 +1,10 @@
 GLOBAL GAMING — COMMUNITYBOT
 
+Versie 1.0.10 geeft menselijke leden de witte Member-rol op Global Gaming.
+De bot kent deze rol toe bij binnenkomst en haalt gemiste toewijzingen bij
+het starten en elke tien minuten in. Leden met openstaande Discord-screening
+krijgen de rol na hun screening. Bots worden overgeslagen.
+
 Versie 1.0.9 beperkt gewone berichten en berichten in threads van de rol
 Promotion Bots tot 🚀・bump-commands op Global Gaming. Bij het opstarten en
 na het maken van een kanaal controleert de bot de effectieve kanaalrechten.

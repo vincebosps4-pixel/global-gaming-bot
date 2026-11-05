@@ -29,6 +29,7 @@ class WelcomeTests(unittest.IsolatedAsyncioTestCase):
         self.client = SimpleNamespace(community=SimpleNamespace(store=self.store),
             welcome_slots=asyncio.Semaphore(2), destination=AsyncMock(return_value=self.channel))
         self.client.send_member_welcome = LoungeBot.send_member_welcome.__get__(self.client)
+        self.client.give_join_badge = AsyncMock()
 
     def tearDown(self):
         self.store.close()
@@ -323,6 +324,51 @@ class PlayerPassTests(unittest.IsolatedAsyncioTestCase):
         await p.share.callback(self.i)
         self.channel.send.assert_awaited_once()
         p.stop()
+
+
+class MemberBadgeTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        from bot import MEMBER_ROLE_ID
+        self.guild = SimpleNamespace(id=GUILD_ID, unavailable=False, channels=[],
+            me=SimpleNamespace(guild_permissions=discord.Permissions(manage_roles=True)))
+        self.role = SimpleNamespace(id=MEMBER_ROLE_ID, guild=self.guild, is_assignable=lambda: True,
+                                    permissions=discord.Permissions.none())
+        self.guild.get_role = lambda key: self.role if key == MEMBER_ROLE_ID else None
+        self.member = SimpleNamespace(guild=self.guild, roles=[], bot=False, pending=False, add_roles=AsyncMock())
+        self.client = SimpleNamespace(member_badge=LoungeBot.member_badge, give_member_badge=LoungeBot.give_member_badge,
+            wait_until_ready=AsyncMock(), get_guild=lambda key: self.guild)
+        self.client.give_join_badge = LoungeBot.give_join_badge.__get__(self.client)
+
+    async def test_join_screening_and_repeated_checks(self):
+        self.member.pending = True
+        await self.client.give_join_badge(self.member)
+        self.member.add_roles.assert_not_awaited()
+        self.member.pending = False
+        await LoungeBot.on_member_update(self.client, SimpleNamespace(pending=True), self.member)
+        self.member.add_roles.assert_awaited_once_with(self.role, reason="Global Gaming membership", atomic=True)
+        self.member.roles.append(self.role)
+        await self.client.give_join_badge(self.member)
+        self.member.add_roles.assert_awaited_once()
+
+    async def test_backfill_handles_offline_joins_and_skips_bots(self):
+        robot = SimpleNamespace(bot=True, add_roles=AsyncMock())
+        async def members(limit):
+            self.assertIsNone(limit)
+            for member in (robot, self.member):
+                yield member
+        self.guild.fetch_members = members
+        await LoungeBot.sync_member_roles.coro(self.client)
+        self.member.add_roles.assert_awaited_once()
+        robot.add_roles.assert_not_awaited()
+
+    async def test_member_badge_cannot_grant_extra_access(self):
+        self.role.permissions = discord.Permissions(manage_messages=True)
+        with self.assertRaises(ValueError):
+            LoungeBot.member_badge(self.guild)
+        self.role.permissions = discord.Permissions.none()
+        self.guild.channels.append(SimpleNamespace(overwrites_for=lambda role: discord.PermissionOverwrite(view_channel=True)))
+        with self.assertRaises(ValueError):
+            LoungeBot.member_badge(self.guild)
 
 
 class PromotionAccessTests(unittest.IsolatedAsyncioTestCase):
