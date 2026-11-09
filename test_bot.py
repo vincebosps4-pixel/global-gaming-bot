@@ -336,8 +336,9 @@ class MemberBadgeTests(unittest.IsolatedAsyncioTestCase):
         self.guild.get_role = lambda key: self.role if key == MEMBER_ROLE_ID else None
         self.member = SimpleNamespace(guild=self.guild, roles=[], bot=False, pending=False, add_roles=AsyncMock())
         self.client = SimpleNamespace(member_badge=LoungeBot.member_badge, give_member_badge=LoungeBot.give_member_badge,
-            wait_until_ready=AsyncMock(), get_guild=lambda key: self.guild)
+            wait_until_ready=AsyncMock(), get_guild=lambda key: self.guild, member_role_lock=asyncio.Lock())
         self.client.give_join_badge = LoungeBot.give_join_badge.__get__(self.client)
+        self.client.check_member_roles = LoungeBot.check_member_roles.__get__(self.client)
 
     async def test_join_screening_and_repeated_checks(self):
         self.member.pending = True
@@ -360,13 +361,72 @@ class MemberBadgeTests(unittest.IsolatedAsyncioTestCase):
         await LoungeBot.sync_member_roles.coro(self.client)
         self.member.add_roles.assert_awaited_once()
         robot.add_roles.assert_not_awaited()
+        self.assertIn("Assigned 1; already Member 0", self.client.member_role_status)
+
+    async def test_gateway_delivers_screening_completion_after_join(self):
+        # Exercise discord.py's actual event parser: the old empty cache silently
+        # discarded this update, even though direct callback tests passed.
+        client = LoungeBot()
+        state = client._connection
+        guild = discord.Guild(data={"id": str(GUILD_ID), "name": "Global Gaming"}, state=state)
+        state._add_guild(guild)
+        events = []
+        state.dispatch = lambda name, *args: events.append((name, args))
+        user = {"id": "42", "username": "test", "discriminator": "0", "avatar": None}
+        state.parse_guild_member_add({"guild_id": str(GUILD_ID), "user": user, "roles": [],
+                                     "joined_at": "2026-11-09T00:00:00+00:00", "pending": True, "flags": 0})
+        state.parse_guild_member_update({"guild_id": str(GUILD_ID), "user": user,
+                                        "roles": [], "pending": False, "flags": 0})
+        updates = [args for name, args in events if name == "member_update"]
+        self.assertEqual(len(updates), 1)
+        before, after = updates[0]
+        self.assertTrue(before.pending)
+        self.assertFalse(after.pending)
+        client.give_join_badge = AsyncMock()
+        await client.on_member_update(before, after)
+        client.give_join_badge.assert_awaited_once_with(after)
+
+    async def test_pending_members_are_not_granted_a_role_by_backfill(self):
+        self.member.pending = True
+        async def members(limit):
+            yield self.member
+        self.guild.fetch_members = members
+        await self.client.check_member_roles(self.guild)
+        self.member.add_roles.assert_not_awaited()
+        self.assertIn("awaiting screening 1", self.client.member_role_status)
+
+    async def test_forbidden_member_does_not_block_next_member(self):
+        other = SimpleNamespace(bot=False, pending=False, roles=[], add_roles=AsyncMock())
+        self.member.add_roles.side_effect = discord.Forbidden(
+            SimpleNamespace(status=403, reason="Forbidden"), {"code": 50013, "message": "Missing Permissions"})
+        async def members(limit):
+            yield self.member
+            yield other
+        self.guild.fetch_members = members
+        await self.client.check_member_roles(self.guild)
+        other.add_roles.assert_awaited_once()
+        self.assertIn("Assigned 1", self.client.member_role_status)
+        self.assertIn("Discord refused 1", self.client.member_role_status)
+
+    async def test_failure_diagnostic_and_recovery(self):
+        self.role.is_assignable = lambda: False
+        async def members(limit):
+            yield self.member
+        self.guild.fetch_members = members
+        await self.client.check_member_roles(self.guild)
+        self.assertIn("above Member", self.client.member_role_status)
+        self.member.add_roles.assert_not_awaited()
+        self.role.is_assignable = lambda: True
+        await self.client.check_member_roles(self.guild)
+        self.member.add_roles.assert_awaited_once()
+        self.assertIn("Assigned 1", self.client.member_role_status)
 
     async def test_member_badge_cannot_grant_extra_access(self):
         self.role.permissions = discord.Permissions(manage_messages=True)
         with self.assertRaises(ValueError):
             LoungeBot.member_badge(self.guild)
         self.role.permissions = discord.Permissions.none()
-        self.guild.channels.append(SimpleNamespace(overwrites_for=lambda role: discord.PermissionOverwrite(view_channel=True)))
+        self.guild.channels.append(SimpleNamespace(id=123, overwrites_for=lambda role: discord.PermissionOverwrite(view_channel=True)))
         with self.assertRaises(ValueError):
             LoungeBot.member_badge(self.guild)
 

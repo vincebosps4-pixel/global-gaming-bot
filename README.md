@@ -42,7 +42,8 @@ Met **/profile** ziet een lid eerst privé de eigen blauw-roze gamerkaart. Naam 
 | `/giveaway_cancel` | Annuleren met bevestiging; bericht blijft behouden |
 | `/setup_embeds` | Vaste embeds vernieuwen |
 | `/setup_community` | Ticketpaneel en kanaalstijl instellen |
-| `/bot_status` | Verbinding, timer en rechten controleren |
+| `/bot_status` | Botversie, Member-rollencontrole, verbinding en rechten controleren |
+| `/member_check` | Ontbrekende Member-rollen controleren en herstellen |
 
 Beheeropdrachten eisen **Server beheren**, ook bij oude previewknoppen. Wijs Support Team alleen toe aan vertrouwde medewerkers. Leden krijgen geen opdrachten om willekeurige kanalen of rollen te veranderen.
 
@@ -50,7 +51,7 @@ Beheeropdrachten eisen **Server beheren**, ook bij oude previewknoppen. Wijs Sup
 
 De bot is vastgezet op de bestaande Global Gaming-app en server. Nodig: kanalen bekijken, berichten versturen, links insluiten, berichtgeschiedenis lezen, kanalen beheren en rollen beheren; bovendien **Bestanden bijvoegen in welcome** voor de kaartjes. De beheerrechten dienen voor privé-ticketkanalen en hun toegangsrechten. Houd de botrol boven Support Team; **Administrator is niet nodig**. Bewaar de expliciete publicatierechten in de alleen-lezen START HERE-kanalen.
 
-**Server Members Intent moet aan** op de [botpagina in het Discord Developer Portal](https://discord.com/developers/applications/1567606693674885302/bot), zodat Discord nieuwe leden aan de bot doorgeeft. Dit is ingesteld voor Global Gaming. Message Content en Presence blijven uit. De bot controleert bij het starten en elke tien minuten de ledenlijst voor de witte Member-rol. Nieuwe leden krijgen deze rol ook bij binnenkomst of na hun Discord-screening. De rollencontrole bewaart de ledenlijst niet. Hij ontvangt systeemberichten voor boosts, geen algemene berichtinhoud. Geen Welcomer, Ticket Tool, GiveawayBot of andere extra bot nodig.
+**Server Members Intent moet aan** op de [botpagina in het Discord Developer Portal](https://discord.com/developers/applications/1567606693674885302/bot), zodat Discord nieuwe leden aan de bot doorgeeft. Dit is ingesteld voor Global Gaming. Message Content en Presence blijven uit. De bot controleert bij het starten en elke twee minuten de ledenlijst voor de witte Member-rol. Nieuwe leden krijgen deze rol ook bij binnenkomst of na hun Discord-screening. Nieuwe leden worden tijdelijk in het geheugen gehouden zodat afgeronde screening meteen wordt verwerkt; er wordt geen ledenlijst op schijf opgeslagen. /member_check herstelt ontbrekende rollen; /bot_status toont de laatst uitgevoerde controle en eventuele blokkade. Hij ontvangt systeemberichten voor boosts, geen algemene berichtinhoud. Geen Welcomer, Ticket Tool, GiveawayBot of andere extra bot nodig.
 
 Dubbele joinmeldingen worden per lid en joinmoment onderdrukt, ook na een herstart met dezelfde database. Bij een onduidelijke netwerkfout wordt niet blind opnieuw verstuurd: controleer dan welcome. Een mislukte verbinding kan dus een welkomstbericht missen. De normale afbeelding en naam worden in geheugen verwerkt; een niet-beschikbare profielfoto krijgt een neutrale avatar. Lange namen worden passend gemaakt. De volledige naam staat ook als Discord-tekst in de embed; beschikbare systeemlettertypen bepalen de schriftweergave op het kaartje.
 

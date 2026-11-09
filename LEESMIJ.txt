@@ -1,5 +1,12 @@
 GLOBAL GAMING — COMMUNITYBOT
 
+Versie 1.0.12 herstelt het verwerken van afgeronde Discord-screening:
+de bot onthoudt nieuwe leden zodat de Member-rol direct kan worden gegeven.
+Een extra controle haalt elke twee minuten ontbrekende rollen in.
+/member_check controleert en herstelt rollen voor toegelaten menselijke leden.
+/bot_status toont de botversie en de laatste controle of blokkade.
+Openstaande screening wordt niet omzeild; Member blijft een rol zonder extra rechten.
+
 Versie 1.0.11 controleert bij het starten en daarna elke 15 minuten op nieuwe
 botversies. Gebruik op een bestaande 24/7-pc met de taak Global Gaming Bot -
 Systeem eenmalig KWARTIERCONTROLE.cmd uit het kwartierpakket als administrator.

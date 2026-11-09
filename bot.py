@@ -9,7 +9,7 @@ import os
 import re
 import unicodedata
 from contextlib import closing
-from datetime import timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 import discord
@@ -624,7 +624,8 @@ class LoungeBot(discord.Client):
         intents.guild_messages = True  # System boost events; no message-content intent.
         intents.members = True  # Enable Server Members Intent in the Developer Portal.
         super().__init__(intents=intents, allowed_mentions=NO_MENTIONS,
-                         member_cache_flags=discord.MemberCacheFlags.none(), chunk_guilds_at_startup=False)
+                         member_cache_flags=discord.MemberCacheFlags(joined=True, voice=False),
+                         chunk_guilds_at_startup=False)
         self.tree = app_commands.CommandTree(self)
         self.publish_lock = asyncio.Lock()
         self.initial_setup_attempted = False
@@ -636,6 +637,8 @@ class LoungeBot(discord.Client):
         self.instance_lock = None
         self.welcome_slots = asyncio.Semaphore(2)
         self.profile_slots = asyncio.Semaphore(2)
+        self.member_role_lock = asyncio.Lock()
+        self.member_role_status = "Waiting for the first check."
 
     async def setup_hook(self):
         if self.user.id != 1567606693674885302:
@@ -653,18 +656,31 @@ class LoungeBot(discord.Client):
     @staticmethod
     def member_badge(guild):
         role = guild.get_role(MEMBER_ROLE_ID)
-        if (role is None or role.guild.id != PROMOTION_GUILD or not role.is_assignable()
-                or role.permissions.value or not guild.me.guild_permissions.manage_roles):
-            raise ValueError("Check the Member role, bot hierarchy and Manage Roles permission.")
-        if any(channel.overwrites_for(role).pair()[0].value for channel in guild.channels):
-            raise ValueError("The Member badge has channel access overrides. Check before assigning it to everyone.")
+        if role is None or role.guild.id != PROMOTION_GUILD:
+            raise ValueError("The configured Member role is missing.")
+        if guild.me is None or not guild.me.guild_permissions.manage_roles:
+            raise ValueError("The bot needs Manage Roles permission.")
+        if not role.is_assignable():
+            raise ValueError("Move the bot's highest role above Member; Member must not be a managed role.")
+        if role.permissions.value:
+            raise ValueError("Member has extra server permissions; the automatic badge must have none.")
+        allowed = [str(channel.id) for channel in guild.channels
+                   if channel.overwrites_for(role).pair()[0].value]
+        if allowed:
+            raise ValueError("Member has channel permission grants in: " + ", ".join(allowed[:8])
+                             + ". Review these before assigning the badge to everyone.")
         return role
 
     @staticmethod
     async def give_member_badge(member, role):
-        if member.bot or member.pending or role in member.roles:
-            return
+        if member.bot:
+            return "bots"
+        if member.pending:
+            return "screening"
+        if role in member.roles:
+            return "already"
         await member.add_roles(role, reason="Global Gaming membership", atomic=True)
+        return "assigned"
 
     async def give_join_badge(self, member):
         if (member.bot or member.pending or member.guild.id != PROMOTION_GUILD or GUILD_ID != PROMOTION_GUILD
@@ -673,26 +689,42 @@ class LoungeBot(discord.Client):
         try:
             await self.give_member_badge(member, self.member_badge(member.guild))
         except (ValueError, discord.HTTPException) as exc:
+            self.member_role_status = "Join assignment blocked: " + (str(exc) if isinstance(exc, ValueError) else type(exc).__name__)
             LOG.warning("Member role pending: %s", str(exc) if isinstance(exc, ValueError) else type(exc).__name__)
 
-    @tasks.loop(minutes=10)
+    async def check_member_roles(self, guild):
+        async with self.member_role_lock:
+            counts = dict.fromkeys(("assigned", "already", "screening", "bots", "failed", "left"), 0)
+            try:
+                if guild is None or guild.unavailable or guild.id != PROMOTION_GUILD or GUILD_ID != PROMOTION_GUILD:
+                    raise ValueError("Global Gaming is not available.")
+                if os.getenv("PUBLISH_ONCE", "false").lower() == "true":
+                    raise ValueError("Member assignment is disabled in publish-only mode.")
+                role = self.member_badge(guild)
+                async for member in guild.fetch_members(limit=None):
+                    try:
+                        counts[await self.give_member_badge(member, role)] += 1
+                    except discord.NotFound as exc:
+                        if exc.code != 10007:
+                            raise
+                        counts["left"] += 1
+                    except discord.Forbidden:
+                        counts["failed"] += 1
+                self.member_role_status = (
+                    f"Assigned {counts['assigned']}; already Member {counts['already']}; "
+                    f"awaiting screening {counts['screening']}; bots skipped {counts['bots']}; "
+                    f"Discord refused {counts['failed']}; left during check {counts['left']}.")
+            except (ValueError, discord.HTTPException) as exc:
+                detail = str(exc) if isinstance(exc, ValueError) else type(exc).__name__
+                self.member_role_status = "Check blocked: " + detail
+            self.member_role_status += " Checked at " + datetime.now(timezone.utc).strftime("%H:%M UTC")
+            LOG.info("Member roles: %s", self.member_role_status)
+            return self.member_role_status
+
+    @tasks.loop(minutes=2)
     async def sync_member_roles(self):
         await self.wait_until_ready()
-        guild = self.get_guild(PROMOTION_GUILD)
-        if guild is None or guild.unavailable:
-            return
-        try:
-            role = self.member_badge(guild)
-            async for member in guild.fetch_members(limit=None):
-                try:
-                    await self.give_member_badge(member, role)
-                except discord.NotFound as exc:
-                    if exc.code != 10007:  # A member can leave during enumeration.
-                        raise
-                except discord.Forbidden:
-                    LOG.warning("Discord refused the Member role for a member; retrying at the next check.")
-        except (ValueError, discord.HTTPException) as exc:
-            LOG.warning("Member role check pending: %s", str(exc) if isinstance(exc, ValueError) else type(exc).__name__)
+        await self.check_member_roles(self.get_guild(PROMOTION_GUILD))
 
     async def destination(self, name: str) -> discord.TextChannel:
         channel = self.get_channel(CHANNELS[name]) or await self.fetch_channel(CHANNELS[name])
@@ -781,7 +813,7 @@ class LoungeBot(discord.Client):
         await asyncio.gather(self.give_join_badge(member), self.send_member_welcome(member))
 
     async def on_member_update(self, before, after):
-        if before.pending and not after.pending:
+        if not after.pending:
             await self.give_join_badge(after)
 
     async def send_member_welcome(self, member):
@@ -1052,13 +1084,26 @@ async def promotion_check(interaction: discord.Interaction):
     await interaction.followup.send(await bot.check_promotions(interaction.guild), ephemeral=True, allowed_mentions=NO_MENTIONS)
 
 
+@bot.tree.command(name="member_check", description="Check and restore the Member badge for eligible human members.", guild=GUILD)
+@app_commands.guild_only()
+@app_commands.default_permissions(manage_guild=True)
+@app_commands.check(is_manager)
+async def member_check(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    await interaction.followup.send(await bot.check_member_roles(interaction.guild), ephemeral=True,
+                                    allowed_mentions=NO_MENTIONS)
+
+
 @bot.tree.command(name="bot_status", description="Check community features and channel permissions.", guild=GUILD)
 @app_commands.guild_only()
 @app_commands.default_permissions(manage_guild=True)
 @app_commands.check(is_manager)
 async def bot_status(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
-    lines = ["Global Gaming Lounge community bot is online."]
+    version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+    lines = [f"Global Gaming Lounge community bot is online. Version {version}."]
+    lines.append("Member role: " + bot.member_role_status)
+    lines.append("Member role checks: " + ("running (every 2 minutes)" if bot.sync_member_roles.is_running() else "not running"))
     lines.append("Promotion Bots: " + bot.promotion_status)
     lines.append("Personal welcome cards: enabled (new human members while online)")
     welcome_channel = interaction.guild.get_channel(CHANNELS["welcome"])
